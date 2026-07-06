@@ -1,5 +1,11 @@
 # Changelog
 
+
+## 0.1.1
+
+- Corretto l'avvio con FastAPI/Python 3.14: gli endpoint DELETE ora restituiscono una risposta HTTP 204 esplicita senza corpo.
+- Aggiunti test automatici per eliminazione utenti, turni e ferie.
+
 ## 0.1.0
 
 - Prima versione installabile come add-on Home Assistant.

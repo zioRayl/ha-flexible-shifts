@@ -13,7 +13,7 @@ from typing import Any, Literal
 
 import uvicorn
 from fastapi import FastAPI, File, Form, HTTPException, Query, Request, UploadFile
-from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse, StreamingResponse
+from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, field_validator, model_validator
 
@@ -39,7 +39,7 @@ async def lifespan(_: FastAPI):
     yield
 
 
-app = FastAPI(title="Flexible Shifts", version="0.1.0", lifespan=lifespan)
+app = FastAPI(title="Flexible Shifts", version="0.1.1", lifespan=lifespan)
 
 
 @app.middleware("http")
@@ -125,7 +125,7 @@ def index() -> FileResponse:
 
 @app.get("/api/health")
 def health() -> dict[str, Any]:
-    return {"status": "ok", "version": "0.1.0", "time": datetime.now().isoformat()}
+    return {"status": "ok", "version": "0.1.1", "time": datetime.now().isoformat()}
 
 
 @app.get("/api/users")
@@ -149,11 +149,12 @@ def update_user(user_id: int, payload: UserPayload) -> dict[str, Any]:
     return user
 
 
-@app.delete("/api/users/{user_id}", status_code=204)
-def delete_user(user_id: int) -> None:
+@app.delete("/api/users/{user_id}", status_code=204, response_class=Response)
+def delete_user(user_id: int) -> Response:
     if not db.delete_user(user_id):
         raise HTTPException(status_code=404, detail="Utente non trovato")
     _sync_soon()
+    return Response(status_code=204)
 
 
 @app.get("/api/calendar")
@@ -200,11 +201,12 @@ def update_shift(shift_id: int, payload: ShiftPayload) -> dict[str, Any]:
     return saved
 
 
-@app.delete("/api/shifts/{shift_id}", status_code=204)
-def delete_shift(shift_id: int) -> None:
+@app.delete("/api/shifts/{shift_id}", status_code=204, response_class=Response)
+def delete_shift(shift_id: int) -> Response:
     if not db.delete_shift(shift_id):
         raise HTTPException(status_code=404, detail="Turno non trovato")
     _sync_soon()
+    return Response(status_code=204)
 
 
 @app.post("/api/vacations", status_code=201)
@@ -226,11 +228,12 @@ def create_vacation(payload: VacationPayload) -> dict[str, Any]:
     return vacation
 
 
-@app.delete("/api/vacations/{vacation_id}", status_code=204)
-def delete_vacation(vacation_id: int) -> None:
+@app.delete("/api/vacations/{vacation_id}", status_code=204, response_class=Response)
+def delete_vacation(vacation_id: int) -> Response:
     if not db.delete_vacation(vacation_id):
         raise HTTPException(status_code=404, detail="Ferie non trovate")
     _sync_soon()
+    return Response(status_code=204)
 
 
 @app.get("/api/reports/annual")

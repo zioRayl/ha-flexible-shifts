@@ -37,7 +37,7 @@ Esempio di pubblicazione:
 ```bash
 git init
 git add .
-git commit -m "Initial release 0.1.0"
+git commit -m "Release 0.1.1"
 git branch -M main
 git remote add origin https://github.com/NOME-UTENTE/ha-flexible-shifts.git
 git push -u origin main
@@ -92,7 +92,7 @@ Il pulsante **Scarica backup** crea e scarica una copia SQLite. I dati restano n
 
 Consultare [docs/CSV_IMPORT.md](docs/CSV_IMPORT.md). È incluso anche [samples/import_template.csv](samples/import_template.csv).
 
-## Limiti della versione 0.1.0
+## Limiti della versione 0.1.1
 
 - Fino a due intervalli di lavoro e un intervallo di pausa esplicita per giorno nell'interfaccia.
 - Il PDF del report viene prodotto tramite la funzione Stampa/Salva PDF del browser.

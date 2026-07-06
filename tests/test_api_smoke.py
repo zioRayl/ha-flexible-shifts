@@ -62,6 +62,33 @@ class ApiSmokeTests(unittest.TestCase):
         self.assertEqual(report.status_code, 200)
         self.assertEqual(report.json()["months"][0]["weekend_days_worked"], 1)
 
+        health = self.client.get("/api/health")
+        self.assertEqual(health.status_code, 200)
+        self.assertEqual(health.json()["version"], "0.1.1")
+
+        shift_id = shift_response.json()["id"]
+        delete_shift = self.client.delete(f"/api/shifts/{shift_id}")
+        self.assertEqual(delete_shift.status_code, 204)
+        self.assertEqual(delete_shift.content, b"")
+
+        vacation_response = self.client.post(
+            "/api/vacations",
+            json={
+                "user_id": user_id,
+                "date_in_week": "2026-01-12",
+                "note": "test ferie",
+            },
+        )
+        self.assertEqual(vacation_response.status_code, 201)
+        vacation_id = vacation_response.json()["id"]
+        delete_vacation = self.client.delete(f"/api/vacations/{vacation_id}")
+        self.assertEqual(delete_vacation.status_code, 204)
+        self.assertEqual(delete_vacation.content, b"")
+
+        delete_user = self.client.delete(f"/api/users/{user_id}")
+        self.assertEqual(delete_user.status_code, 204)
+        self.assertEqual(delete_user.content, b"")
+
 
 if __name__ == "__main__":
     unittest.main()
