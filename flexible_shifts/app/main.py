@@ -23,6 +23,7 @@ from calculations import (
     normalize_segments,
     parse_time_value,
     shift_total_hours,
+    vacation_allocation_for_period,
     vacation_credit_hours,
 )
 from ha_sync import sync_all_users
@@ -40,7 +41,7 @@ async def lifespan(_: FastAPI):
     yield
 
 
-app = FastAPI(title="Flexible Shifts", version="0.2.0", lifespan=lifespan)
+app = FastAPI(title="Flexible Shifts", version="0.3.0", lifespan=lifespan)
 
 
 @app.middleware("http")
@@ -152,9 +153,24 @@ class PresetPayload(BaseModel):
 
 class VacationPayload(BaseModel):
     user_id: int
-    date_in_week: date
+    start_date: date | None = None
+    end_date: date | None = None
+    # Legacy field kept so clients from 0.2.x can still create a full vacation week.
+    date_in_week: date | None = None
     note: str = Field(default="", max_length=1000)
-    credited_hours: float | None = Field(default=None, ge=0, le=168)
+    credited_hours: float | None = Field(default=None, ge=0, le=744)
+
+    @model_validator(mode="after")
+    def validate_dates(self) -> "VacationPayload":
+        if self.date_in_week and not self.start_date and not self.end_date:
+            return self
+        if not self.start_date:
+            raise ValueError("La data di inizio ferie è obbligatoria")
+        if self.end_date is None:
+            self.end_date = self.start_date
+        if self.end_date < self.start_date:
+            raise ValueError("La data di fine ferie non può precedere quella di inizio")
+        return self
 
 
 def _require_user(user_id: int) -> dict[str, Any]:
@@ -184,7 +200,7 @@ def index() -> FileResponse:
 
 @app.get("/api/health")
 def health() -> dict[str, Any]:
-    return {"status": "ok", "version": "0.2.0", "time": datetime.now().isoformat()}
+    return {"status": "ok", "version": "0.3.0", "time": datetime.now().isoformat()}
 
 
 @app.get("/api/users")
@@ -270,6 +286,15 @@ def calendar_data(
     for shift in shifts:
         shift["total_hours"] = shift_total_hours(shift)
     vacations = db.list_vacations(ids, start.isoformat(), end.isoformat())
+    users_by_id = {user_id: db.get_user(user_id) for user_id in ids}
+    for vacation in vacations:
+        user = users_by_id.get(vacation["user_id"])
+        if not user:
+            continue
+        allocation = vacation_allocation_for_period(user, vacation, start, end)
+        vacation["credited_hours_in_range"] = round(allocation["credited_hours"], 2)
+        vacation["vacation_days_in_range"] = allocation["vacation_days"]
+        vacation["equivalent_weeks_in_range"] = round(allocation["equivalent_weeks"], 2)
     return {"shifts": shifts, "vacations": vacations}
 
 
@@ -308,13 +333,25 @@ def delete_shift(shift_id: int) -> Response:
 @app.post("/api/vacations", status_code=201)
 def create_vacation(payload: VacationPayload) -> dict[str, Any]:
     user = _require_user(payload.user_id)
-    monday = payload.date_in_week - timedelta(days=payload.date_in_week.weekday())
-    end_date = monday + timedelta(days=4 if user["employment_type"] == "full_time" else 6)
-    credit = payload.credited_hours if payload.credited_hours is not None else vacation_credit_hours(user)
+
+    if payload.date_in_week and not payload.start_date:
+        # Backward compatibility with 0.2.x: date_in_week means a complete week.
+        start_date = payload.date_in_week - timedelta(days=payload.date_in_week.weekday())
+        end_date = start_date + timedelta(days=4 if user["employment_type"] == "full_time" else 6)
+    else:
+        assert payload.start_date is not None
+        start_date = payload.start_date
+        end_date = payload.end_date or start_date
+
+    credit = (
+        payload.credited_hours
+        if payload.credited_hours is not None
+        else vacation_credit_hours(user, start_date, end_date)
+    )
     vacation = db.create_vacation(
         {
             "user_id": payload.user_id,
-            "start_date": monday.isoformat(),
+            "start_date": start_date.isoformat(),
             "end_date": end_date.isoformat(),
             "credited_hours": credit,
             "note": payload.note,
@@ -373,20 +410,21 @@ def export_csv(user_id: int, year: int = Query(ge=2000, le=2100)) -> StreamingRe
     output = io.StringIO()
     writer = csv.writer(output, delimiter=";")
     writer.writerow([
-        "utente", "data", "tipo", "inizio_turno", "fine_turno",
+        "utente", "data", "data_fine", "tipo", "inizio_turno", "fine_turno",
         "inizio_pausa", "fine_pausa", "ore_totali", "ore_accreditate", "note",
     ])
     for shift in shifts:
         work = shift["work_segments"][0]
         pause = shift["break_segments"][0] if shift["break_segments"] else {"start": "", "end": ""}
         writer.writerow([
-            user["name"], shift["date"], "work", work["start"], work["end"],
+            user["name"], shift["date"], "", "work", work["start"], work["end"],
             pause["start"], pause["end"],
             str(shift_total_hours(shift)).replace(".", ","), "", shift["note"],
         ])
     for vacation in vacations:
         writer.writerow([
-            user["name"], vacation["start_date"], "ferie", "", "", "", "", "",
+            user["name"], vacation["start_date"], vacation["end_date"], "ferie",
+            "", "", "", "", "",
             str(vacation["credited_hours"]).replace(".", ","), vacation["note"],
         ])
 

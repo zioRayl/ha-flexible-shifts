@@ -34,3 +34,8 @@ Il database è salvato in `/data/flexible_shifts.db` ed è incluso nei backup di
 ## Importazione
 
 Dal menu **Importa / Esporta** è possibile scaricare un modello CSV, importare dati storici ed esportare un anno completo. I vecchi CSV con due coppie Start/Stop restano supportati: vengono convertiti in un unico turno con pausa intermedia.
+
+
+## Accesso utenti
+
+La voce **Turni** è accessibile a tutti gli utenti autenticati di Home Assistant. La gestione dell’add-on (installazione, aggiornamento, avvio e configurazione) rimane invece riservata agli amministratori di Home Assistant.

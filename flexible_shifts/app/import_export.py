@@ -5,7 +5,7 @@ import io
 from datetime import date, datetime, timedelta
 from typing import Any
 
-from calculations import normalize_segments, parse_time_value, vacation_credit_hours
+from calculations import normalize_segments, parse_time_value, vacation_credit_hours, weekly_standard_hours
 from db import create_vacation, get_shift_for_day, get_user, upsert_shift
 
 
@@ -25,6 +25,7 @@ def _normalize_header(value: str) -> str:
 ALIASES = {
     "date": {"date", "data", "giorno"},
     "type": {"type", "tipo", "tipologia"},
+    "end_date": {"end_date", "data_fine", "fine_ferie", "ferie_fino_al"},
     "start_1": {"start_1", "start1", "inizio_1", "inizio1", "entrata_1", "entrata1", "start", "inizio_turno"},
     "end_1": {"end_1", "end1", "stop_1", "stop1", "fine_1", "fine1", "uscita_1", "uscita1", "stop", "fine_turno"},
     "start_2": {"start_2", "start2", "inizio_2", "inizio2", "entrata_2", "entrata2"},
@@ -100,15 +101,43 @@ def import_csv(content: bytes, user_id: int) -> dict[str, Any]:
             row_type = row.get(columns.get("type", ""), "work").strip().lower() if columns.get("type") else "work"
             note = row.get(columns.get("note", ""), "").strip() if columns.get("note") else ""
 
-            if row_type in {"vacation", "ferie", "holiday_week", "ferie_settimana"}:
-                monday = row_date - timedelta(days=row_date.weekday())
-                end_date = monday + timedelta(days=4 if user["employment_type"] == "full_time" else 6)
+            if row_type in {"vacation", "ferie", "holiday_week", "ferie_settimana", "vacation_day", "ferie_giorno"}:
                 raw_credit = row.get(columns.get("credited_hours", ""), "").strip() if columns.get("credited_hours") else ""
-                credit = float(raw_credit.replace(",", ".")) if raw_credit else vacation_credit_hours(user)
+                raw_end_date = row.get(columns.get("end_date", ""), "").strip() if columns.get("end_date") else ""
+
+                if raw_end_date:
+                    vacation_start = row_date
+                    vacation_end = _parse_date(raw_end_date)
+                elif row_type in {"holiday_week", "ferie_settimana"}:
+                    vacation_start = row_date - timedelta(days=row_date.weekday())
+                    vacation_end = vacation_start + timedelta(days=4 if user["employment_type"] == "full_time" else 6)
+                else:
+                    # New default: a generic "ferie" row is one day. For compatibility
+                    # with old exports, a weekly credit with no end date is inferred as a full week.
+                    inferred_week = False
+                    if raw_credit:
+                        try:
+                            inferred_week = float(raw_credit.replace(",", ".")) >= weekly_standard_hours(user) * 0.9
+                        except ValueError:
+                            inferred_week = False
+                    if inferred_week and row_type in {"vacation", "ferie"}:
+                        vacation_start = row_date - timedelta(days=row_date.weekday())
+                        vacation_end = vacation_start + timedelta(days=4 if user["employment_type"] == "full_time" else 6)
+                    else:
+                        vacation_start = row_date
+                        vacation_end = row_date
+
+                if vacation_end < vacation_start:
+                    raise ValueError("La data di fine ferie precede quella di inizio")
+                credit = (
+                    float(raw_credit.replace(",", "."))
+                    if raw_credit
+                    else vacation_credit_hours(user, vacation_start, vacation_end)
+                )
                 create_vacation({
                     "user_id": user_id,
-                    "start_date": monday.isoformat(),
-                    "end_date": end_date.isoformat(),
+                    "start_date": vacation_start.isoformat(),
+                    "end_date": vacation_end.isoformat(),
                     "credited_hours": credit,
                     "note": note,
                 })
@@ -178,8 +207,9 @@ def import_csv(content: bytes, user_id: int) -> dict[str, Any]:
     }
 
 
-CSV_TEMPLATE = """data;tipo;inizio_turno;fine_turno;inizio_pausa;fine_pausa;ore_accreditate;note
-2026-01-05;work;08:30;14:30;;;;Turno mattina
-2026-01-06;work;08:00;19:30;11:00;15:00;;Turno con pausa
-2026-01-12;ferie;;;;;30,5;Settimana ferie
+CSV_TEMPLATE = """data;data_fine;tipo;inizio_turno;fine_turno;inizio_pausa;fine_pausa;ore_accreditate;note
+2026-01-05;;work;08:30;14:30;;;;Turno mattina
+2026-01-06;;work;08:00;19:30;11:00;15:00;;Turno con pausa
+2026-01-12;;ferie;;;;;;;Singolo giorno di ferie
+2026-02-02;2026-02-08;ferie;;;;;;;Intervallo di ferie
 """

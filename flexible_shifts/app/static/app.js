@@ -239,12 +239,17 @@ function shiftCard(shift, compact = false) {
     </article>`;
 }
 
+function vacationPeriodLabel(vacation) {
+  if (vacation.start_date === vacation.end_date) return 'Giorno singolo';
+  return `${formatDate(parseIso(vacation.start_date), { day: '2-digit', month: '2-digit' })}–${formatDate(parseIso(vacation.end_date), { day: '2-digit', month: '2-digit' })}`;
+}
+
 function vacationCard(vacation, compact = false) {
   const user = getUser(vacation.user_id);
   return `
     <article class="${compact ? 'month-chip vacation' : 'shift-card vacation-card'}" data-vacation-id="${vacation.id}">
       <div class="shift-user">${escapeHtml(user?.name || 'Utente')} · Ferie</div>
-      ${compact ? '' : `<div class="shift-total">Settimana ${formatHours(vacation.credited_hours)} h</div>`}
+      ${compact ? '' : `<div class="shift-total">${escapeHtml(vacationPeriodLabel(vacation))} · ${formatHours(vacation.credited_hours)} h</div>`}
     </article>`;
 }
 
@@ -259,10 +264,10 @@ function bindCalendarActions() {
     element.addEventListener('click', async () => {
       const vacation = state.calendarData.vacations.find((item) => item.id === Number(element.dataset.vacationId));
       if (!vacation) return;
-      if (!confirm(`Eliminare la settimana di ferie dal ${vacation.start_date} al ${vacation.end_date}?`)) return;
+      if (!confirm(`Eliminare le ferie dal ${vacation.start_date} al ${vacation.end_date}?`)) return;
       try {
         await api(`vacations/${vacation.id}`, { method: 'DELETE' });
-        showToast('Settimana di ferie eliminata');
+        showToast('Ferie eliminate');
         await refreshCalendar();
       } catch (error) { showToast(error.message, true); }
     });
@@ -338,7 +343,7 @@ function renderDayView() {
     const shift = shifts.find((item) => item.user_id === user.id);
     const vacation = vacations.find((item) => item.user_id === user.id);
     let content = '<p class="muted">Nessun turno inserito.</p>';
-    if (vacation) content = `<div class="large-time">Ferie</div><p>${formatHours(vacation.credited_hours)} ore accreditate nella settimana.</p>`;
+    if (vacation) content = `<div class="large-time">Ferie</div><p>${escapeHtml(vacationPeriodLabel(vacation))} · ${formatHours(vacation.credited_hours)} ore accreditate nel periodo.</p>`;
     if (shift) content = `<div class="large-time">${escapeHtml(shiftTimes(shift))}</div><p>${formatHours(shift.total_hours)} h${shift.break_segments.length ? ` · pausa ${escapeHtml(pauseText(shift))}` : ''}</p>`;
     return `
       <section class="day-view-card">
@@ -359,12 +364,13 @@ function renderSummary() {
   $('#summaryStrip').innerHTML = users.map((user) => {
     const userShifts = shifts.filter((shift) => shift.user_id === user.id);
     const hours = userShifts.reduce((sum, shift) => sum + Number(shift.total_hours), 0);
-    const vacationStarts = new Set(state.calendarData.vacations.filter((vacation) => vacation.user_id === user.id).map((vacation) => vacation.start_date));
-    const vacationHours = state.calendarData.vacations.filter((vacation) => vacation.user_id === user.id && vacation.start_date >= isoDate(state.range.start) && vacation.start_date <= isoDate(state.range.end)).reduce((sum, vacation) => sum + Number(vacation.credited_hours), 0);
+    const userVacations = state.calendarData.vacations.filter((vacation) => vacation.user_id === user.id);
+    const vacationHours = userVacations.reduce((sum, vacation) => sum + Number(vacation.credited_hours_in_range || 0), 0);
+    const vacationWeeks = userVacations.reduce((sum, vacation) => sum + Number(vacation.equivalent_weeks_in_range || 0), 0);
     return `
       <div class="summary-card">
         <strong>${formatHours(hours + vacationHours)} h</strong>
-        <span>${escapeHtml(user.name)} ${periodLabel}${vacationStarts.size ? ` · ${vacationStarts.size} sett. ferie` : ''}</span>
+        <span>${escapeHtml(user.name)} ${periodLabel}${vacationWeeks ? ` · ${formatHours(vacationWeeks)} sett. ferie` : ''}</span>
       </div>`;
   }).join('');
 }
@@ -455,10 +461,26 @@ async function openShiftDialog(dateString = isoDate(state.currentDate), userId =
   $('#shiftDialog').showModal();
 }
 
+function vacationEligibleDays(user, startValue, endValue) {
+  if (!user || !startValue || !endValue) return 0;
+  const start = parseIso(startValue);
+  const end = parseIso(endValue);
+  if (end < start) return 0;
+  let count = 0;
+  for (let day = new Date(start); day <= end; day = addDays(day, 1)) {
+    const weekday = day.getDay();
+    if (user.employment_type === 'part_time' || (weekday !== 0 && weekday !== 6)) count += 1;
+  }
+  return count;
+}
+
 function openVacationDialog() {
   if (!state.users.some((user) => user.active)) return showToast('Crea prima almeno un utente', true);
   $('#vacationUser').value = String(state.selectedUserIds[0] || state.users.find((user) => user.active)?.id);
-  $('#vacationDate').value = isoDate(state.currentDate);
+  const selectedDate = isoDate(state.currentDate);
+  $('#vacationStartDate').value = selectedDate;
+  $('#vacationEndDate').value = selectedDate;
+  $('#vacationEndDate').min = selectedDate;
   $('#vacationHours').value = '';
   $('#vacationNote').value = '';
   updateVacationHint();
@@ -468,9 +490,15 @@ function openVacationDialog() {
 function updateVacationHint() {
   const user = getUser($('#vacationUser').value);
   if (!user) return;
-  const days = user.employment_type === 'full_time' ? 'lunedì-venerdì' : 'lunedì-domenica';
-  const weeklyHours = user.target_basis === 'weekly' ? user.target_hours : user.target_hours / 4;
-  $('#vacationRuleHint').textContent = `${user.name}: ferie ${days}; accredito automatico ${formatHours(weeklyHours)} ore.`;
+  const start = $('#vacationStartDate').value;
+  const end = $('#vacationEndDate').value;
+  if (start) $('#vacationEndDate').min = start;
+  const daysPerWeek = user.employment_type === 'full_time' ? 5 : 7;
+  const weeklyHours = user.target_basis === 'weekly' ? Number(user.target_hours) : Number(user.target_hours) / 4;
+  const selectedDays = vacationEligibleDays(user, start, end);
+  const automaticHours = selectedDays ? weeklyHours * selectedDays / daysPerWeek : 0;
+  const rule = user.employment_type === 'full_time' ? 'si conteggiano lunedì-venerdì' : 'si conteggiano lunedì-domenica';
+  $('#vacationRuleHint').textContent = `${user.name}: ${selectedDays} giorni validi (${rule}), pari a ${formatHours(selectedDays / daysPerWeek)} settimane e ${formatHours(automaticHours)} ore automatiche.`;
 }
 
 function resetUserForm() {
@@ -631,8 +659,8 @@ function renderReport(report) {
       <div class="report-table-wrap">
         <table class="report-table">
           <thead><tr>
-            <th>Mese</th><th>Ore totali</th><th>Straordinari</th><th>Standard</th><th>Saldo</th>
-            <th>GWE lavorati</th><th>Su</th><th>Ferie</th><th>%</th>
+            <th>Mese</th><th>Ore totali</th><th>Straordinari</th><th>Standard</th>
+            <th>GWE lavorati</th><th>Su</th><th>%</th><th>Settimane Ferie</th>
           </tr></thead>
           <tbody>${report.months.map((month) => {
             const future = month.month > activeMonths;
@@ -642,26 +670,22 @@ function renderReport(report) {
               <td>${future ? '' : formatHours(month.total_hours)}</td>
               <td class="${future ? '' : `overtime-${month.overtime_status}`}">${future ? '' : formatHours(month.overtime_hours)}</td>
               <td>${future ? '' : formatHours(month.standard_hours)}</td>
-              <td>${future ? '' : formatHours(month.balance_hours)}</td>
               <td>${future ? '' : (tracksWeekends ? month.weekend_days_worked : '-')}</td>
               <td>${future ? '' : (tracksWeekends ? month.weekend_days_available : '-')}</td>
-              <td>${future ? '' : month.vacation_weeks}</td>
               <td>${future ? '' : (tracksWeekends ? `${formatHours(month.weekend_percentage)}%` : '-')}</td>
+              <td>${future ? '' : formatHours(month.vacation_weeks)}</td>
             </tr>`;
           }).join('')}</tbody>
         </table>
       </div>
       <aside class="report-summary">
-        ${summaryCard('Tot. ore contabilizzate', `${formatHours(report.summary.total_hours)} h`)}
-        ${summaryCard('Ore realmente lavorate', `${formatHours(report.summary.worked_hours)} h`)}
-        ${summaryCard('Ore ferie accreditate', `${formatHours(report.summary.vacation_hours)} h`)}
+        ${summaryCard('Tot. ore totali', `${formatHours(report.summary.total_hours)} h`)}
         ${summaryCard('Tot. straordinari', `${formatHours(report.summary.overtime_hours)} h`)}
         ${summaryCard('Tot. standard', `${formatHours(report.summary.standard_hours)} h`)}
-        ${summaryCard('Saldo', `${formatHours(report.summary.balance_hours)} h`)}
         ${tracksWeekends ? summaryCard('GWE lavorati', report.summary.weekend_days_worked) : ''}
         ${tracksWeekends ? summaryCard('Su', report.summary.weekend_days_available) : ''}
-        ${tracksWeekends ? summaryCard('Percentuale weekend', `${formatHours(report.summary.weekend_percentage)}%`) : ''}
-        ${summaryCard('Settimane ferie', report.summary.vacation_weeks)}
+        ${tracksWeekends ? summaryCard('%', `${formatHours(report.summary.weekend_percentage)}%`) : ''}
+        ${summaryCard('Settimane ferie', formatHours(report.summary.vacation_weeks))}
       </aside>
     </div>`;
 }
@@ -800,18 +824,26 @@ function wireEvents() {
   });
 
   $('#vacationUser').addEventListener('change', updateVacationHint);
+  $('#vacationStartDate').addEventListener('change', () => {
+    if (!$('#vacationEndDate').value || $('#vacationEndDate').value < $('#vacationStartDate').value) {
+      $('#vacationEndDate').value = $('#vacationStartDate').value;
+    }
+    updateVacationHint();
+  });
+  $('#vacationEndDate').addEventListener('change', updateVacationHint);
   $('#vacationForm').addEventListener('submit', async (event) => {
     event.preventDefault();
     const payload = {
       user_id: Number($('#vacationUser').value),
-      date_in_week: $('#vacationDate').value,
+      start_date: $('#vacationStartDate').value,
+      end_date: $('#vacationEndDate').value,
       note: $('#vacationNote').value,
       credited_hours: $('#vacationHours').value ? Number($('#vacationHours').value) : null,
     };
     try {
       await api('vacations', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
       $('#vacationDialog').close();
-      showToast('Settimana di ferie salvata');
+      showToast('Ferie salvate');
       await refreshCalendar();
     } catch (error) { showToast(error.message, true); }
   });

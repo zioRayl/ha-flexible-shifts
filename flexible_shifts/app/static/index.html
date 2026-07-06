@@ -142,19 +142,24 @@
     <form id="vacationForm" method="dialog">
       <div class="dialog-header">
         <div>
-          <h2>Settimana di ferie</h2>
-          <p>La settimana viene normalizzata al lunedì.</p>
+          <h2>Ferie</h2>
+          <p>Inserisci un singolo giorno oppure un intervallo di più giorni.</p>
         </div>
         <button class="dialog-close" type="button" data-close-dialog="vacationDialog" aria-label="Chiudi">×</button>
       </div>
       <label>Utente
         <select id="vacationUser" required></select>
       </label>
-      <label>Una data della settimana
-        <input id="vacationDate" type="date" required>
-      </label>
+      <div class="form-grid two-cols">
+        <label>Dal
+          <input id="vacationStartDate" type="date" required>
+        </label>
+        <label>Al
+          <input id="vacationEndDate" type="date" required>
+        </label>
+      </div>
       <label>Ore accreditate
-        <input id="vacationHours" type="number" min="0" max="168" step="0.25" placeholder="Automatiche dal contratto">
+        <input id="vacationHours" type="number" min="0" max="744" step="0.01" placeholder="Calcolate automaticamente dai giorni selezionati">
       </label>
       <label>Note
         <textarea id="vacationNote" rows="3"></textarea>

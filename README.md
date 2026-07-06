@@ -13,7 +13,7 @@ Il progetto nasce dalla struttura del foglio `Orari 2026`: calendario settimanal
 - Un solo intervallo per turno, espresso come **Inizio turno** e **Fine turno**.
 - Pausa opzionale con ora di inizio e fine, sottratta dal conteggio.
 - Preset orari personalizzati per ogni utente, con nome, inizio, fine e pausa.
-- Ferie gestite come settimana:
+- Ferie gestite per giorno o intervallo:
   - full-time: lunedì-venerdì;
   - part-time: lunedì-domenica.
 - Obiettivo contrattuale settimanale oppure mensile per ogni utente.
@@ -38,7 +38,7 @@ Esempio di pubblicazione:
 ```bash
 git init
 git add .
-git commit -m "Release 0.2.0"
+git commit -m "Release 0.3.0"
 git branch -M main
 git remote add origin https://github.com/NOME-UTENTE/ha-flexible-shifts.git
 git push -u origin main
@@ -53,7 +53,7 @@ Dal menu a rotellina:
 3. Indicare full-time/part-time, base settimanale/mensile, ore previste e soglia straordinari.
 4. Creare, se utile, i preset dal menu **Preset orari**.
 5. Inserire i turni dal pulsante **+ Turno**, scegliendo un preset oppure compilando gli orari manualmente.
-6. Inserire una settimana di ferie dal pulsante **+ Ferie**.
+6. Inserire un singolo giorno o un intervallo dal pulsante **+ Ferie**.
 7. Aprire **Reportistica annuale** per il riepilogo.
 
 ## Regola dello standard mensile
@@ -94,7 +94,7 @@ Il pulsante **Scarica backup** crea e scarica una copia SQLite. I dati restano n
 
 Consultare [docs/CSV_IMPORT.md](docs/CSV_IMPORT.md). È incluso anche [samples/import_template.csv](samples/import_template.csv).
 
-## Limiti della versione 0.2.0
+## Limiti della versione 0.3.0
 
 - Ogni giorno prevede un solo turno con al massimo una pausa esplicita.
 - Il PDF del report viene prodotto tramite la funzione Stampa/Salva PDF del browser.

@@ -101,7 +101,7 @@ class ApiSmokeTests(unittest.TestCase):
 
         health = self.client.get("/api/health")
         self.assertEqual(health.status_code, 200)
-        self.assertEqual(health.json()["version"], "0.2.0")
+        self.assertEqual(health.json()["version"], "0.3.0")
 
         shift_id = shift_response.json()["id"]
         delete_shift = self.client.delete(f"/api/shifts/{shift_id}")
@@ -116,11 +116,15 @@ class ApiSmokeTests(unittest.TestCase):
             "/api/vacations",
             json={
                 "user_id": user_id,
-                "date_in_week": "2026-01-12",
-                "note": "test ferie",
+                "start_date": "2026-01-12",
+                "end_date": "2026-01-12",
+                "note": "giorno ferie",
             },
         )
         self.assertEqual(vacation_response.status_code, 201)
+        self.assertEqual(vacation_response.json()["start_date"], "2026-01-12")
+        self.assertEqual(vacation_response.json()["end_date"], "2026-01-12")
+        self.assertAlmostEqual(vacation_response.json()["credited_hours"], 30.5 / 7, places=5)
         vacation_id = vacation_response.json()["id"]
         delete_vacation = self.client.delete(f"/api/vacations/{vacation_id}")
         self.assertEqual(delete_vacation.status_code, 204)
@@ -129,6 +133,37 @@ class ApiSmokeTests(unittest.TestCase):
         delete_user = self.client.delete(f"/api/users/{user_id}")
         self.assertEqual(delete_user.status_code, 204)
         self.assertEqual(delete_user.content, b"")
+
+    def test_vacation_range_and_legacy_week_payload(self):
+        user_id = self.create_user()["id"]
+        response = self.client.post(
+            "/api/vacations",
+            json={
+                "user_id": user_id,
+                "start_date": "2026-02-02",
+                "end_date": "2026-02-04",
+                "note": "tre giorni",
+            },
+        )
+        self.assertEqual(response.status_code, 201)
+        self.assertAlmostEqual(response.json()["credited_hours"], 30.5 * 3 / 7, places=5)
+
+        calendar = self.client.get(
+            f"/api/calendar?user_ids={user_id}&start=2026-02-03&end=2026-02-03"
+        )
+        self.assertEqual(calendar.status_code, 200)
+        vacation = calendar.json()["vacations"][0]
+        self.assertEqual(vacation["vacation_days_in_range"], 1)
+        self.assertAlmostEqual(vacation["equivalent_weeks_in_range"], 0.14, places=2)
+
+        legacy = self.client.post(
+            "/api/vacations",
+            json={"user_id": user_id, "date_in_week": "2026-02-09"},
+        )
+        self.assertEqual(legacy.status_code, 201)
+        self.assertEqual(legacy.json()["start_date"], "2026-02-09")
+        self.assertEqual(legacy.json()["end_date"], "2026-02-15")
+        self.assertEqual(legacy.json()["credited_hours"], 30.5)
 
     def test_multiple_work_intervals_are_rejected(self):
         user_id = self.create_user()["id"]

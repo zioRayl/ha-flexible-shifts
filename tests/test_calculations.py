@@ -15,6 +15,7 @@ from calculations import (  # noqa: E402
     monthly_standard_hours,
     parse_time_value,
     shift_total_hours,
+    vacation_credit_hours,
     weekend_days_in_month,
 )
 
@@ -102,6 +103,52 @@ class CalculationTests(unittest.TestCase):
         self.assertEqual(report["vacation_weeks"], 1)
         self.assertEqual(report["weekend_days_worked"], 2)
         self.assertEqual(report["weekend_days_available"], 9)
+
+    def test_single_vacation_day_is_fraction_of_week(self):
+        db.create_vacation(
+            {
+                "user_id": self.user["id"],
+                "start_date": "2026-02-10",
+                "end_date": "2026-02-10",
+                "credited_hours": vacation_credit_hours(
+                    self.user, date(2026, 2, 10), date(2026, 2, 10)
+                ),
+                "note": "giorno singolo",
+            }
+        )
+        report = month_report(self.user, 2026, 2)
+        self.assertEqual(report["vacation_days"], 1)
+        self.assertEqual(report["vacation_weeks"], 0.14)
+        self.assertAlmostEqual(report["vacation_hours"], 4.36, places=2)
+
+    def test_full_time_vacation_range_ignores_weekend(self):
+        full_time = db.create_user(
+            {
+                "name": "Test Full Time",
+                "employment_type": "full_time",
+                "target_basis": "weekly",
+                "target_hours": 40,
+                "monthly_from_weekly_mode": "x4",
+                "overtime_min": 0,
+                "overtime_max": 12,
+                "active": True,
+            }
+        )
+        credit = vacation_credit_hours(full_time, date(2026, 3, 6), date(2026, 3, 9))
+        self.assertEqual(credit, 16.0)  # Friday + Monday, 8 hours each.
+        db.create_vacation(
+            {
+                "user_id": full_time["id"],
+                "start_date": "2026-03-06",
+                "end_date": "2026-03-09",
+                "credited_hours": credit,
+                "note": "ponte",
+            }
+        )
+        report = month_report(full_time, 2026, 3)
+        self.assertEqual(report["vacation_days"], 2)
+        self.assertEqual(report["vacation_weeks"], 0.4)
+        self.assertEqual(report["vacation_hours"], 16.0)
 
     def test_annual_report_current_month_cutoff(self):
         report = annual_report(self.user, 2026, today=date(2026, 5, 20))

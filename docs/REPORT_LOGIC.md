@@ -1,34 +1,33 @@
-# Logica della reportistica
+# Logica dei report
 
-## Colonne mensili
+## Colonne del report mensile
 
-- **Ore totali**: ore dei turni più ore accreditate per ferie.
-- **Straordinari**: `max(0, ore totali - standard)`.
-- **Standard**: obiettivo mensile dell'utente oppure conversione dell'obiettivo settimanale.
-- **Saldo**: `ore totali - standard`, quindi può essere negativo.
-- **GWE lavorati**: per i soli part-time, numero di date distinte di sabato o domenica con almeno un turno lavorato.
-- **Su**: per i soli part-time, numero totale di sabati e domeniche presenti nel mese.
-- **Ferie**: numero di settimane di ferie che iniziano nel mese.
-- **%**: `GWE lavorati / Su × 100`.
+1. **Mese**
+2. **Ore totali**: ore lavorate più ore ferie accreditate.
+3. **Straordinari**: `max(0, ore totali - standard)`.
+4. **Standard**: obiettivo mensile dell'utente.
+5. **GWE lavorati**: sabati e domeniche con un turno, per utenti part-time.
+6. **Su**: numero totale di sabati e domeniche presenti nel mese.
+7. **%**: `GWE lavorati / Su × 100`.
+8. **Settimane Ferie**: equivalente in settimane dei giorni di ferie del mese.
 
-## Soglia straordinari
+Il **Saldo** non viene più visualizzato. Rimane disponibile internamente nell'API per compatibilità con versioni precedenti.
 
-Ogni utente ha una soglia minima e massima. Con la configurazione 0-12 ore:
+## Calcolo delle ferie
 
-- da 0 a 12 ore: stato accettabile;
-- oltre 12 ore: stato eccessivo.
+Le ferie possono coprire un singolo giorno o un intervallo di date.
 
-Il colore del valore nella tabella annuale riflette questa soglia.
+- Full-time: sono validi lunedì-venerdì; una settimana equivale a 5 giorni.
+- Part-time: sono validi lunedì-domenica; una settimana equivale a 7 giorni.
 
-## Totali annuali
+Il credito automatico è:
 
-Per l'anno corrente il riepilogo considera gennaio fino al mese corrente. Per un anno passato considera tutti i dodici mesi. Le righe future restano visibili ma attenuate.
+`ore settimanali × giorni di ferie validi / giorni contrattuali per settimana`
 
-## Ferie
+Esempi:
 
-Una settimana di ferie accredita:
+- full-time 40 h, un giorno: `40 / 5 = 8 h`, pari a `0,20` settimane;
+- part-time 30,5 h, un giorno: `30,5 / 7 = 4,357... h`, pari a `0,142857...` settimane;
+- settimana completa: `1,00` settimana.
 
-- le ore settimanali, se l'utente è configurato su base settimanale;
-- un quarto delle ore mensili, se è configurato su base mensile.
-
-La ferie non incrementano il numero di weekend lavorati.
+Se un intervallo attraversa due mesi, ore e settimane equivalenti vengono ripartite in proporzione ai giorni validi ricadenti in ciascun mese.

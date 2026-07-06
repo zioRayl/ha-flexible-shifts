@@ -1,5 +1,5 @@
 name: Flexible Shifts
-version: "0.2.0"
+version: "0.3.0"
 slug: flexible_shifts
 description: Gestione flessibile di turni, pause, preset orari, ferie e report annuali per Home Assistant.
 arch:
@@ -12,7 +12,7 @@ ingress: true
 ingress_port: 8099
 panel_icon: mdi:calendar-clock
 panel_title: Turni
-panel_admin: true
+panel_admin: false
 stage: experimental
 backup: hot
 watchdog: http://[HOST]:[PORT:8099]/api/health
