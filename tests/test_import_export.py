@@ -7,6 +7,7 @@ APP_DIR = Path(__file__).resolve().parents[1] / "flexible_shifts" / "app"
 sys.path.insert(0, str(APP_DIR))
 
 import db  # noqa: E402
+from calculations import shift_total_hours  # noqa: E402
 from import_export import import_csv  # noqa: E402
 
 
@@ -29,10 +30,10 @@ class ImportTests(unittest.TestCase):
     def tearDown(self):
         self.tempdir.cleanup()
 
-    def test_semicolon_decimal_and_vacation(self):
+    def test_legacy_two_pairs_are_converted_to_pause(self):
         content = (
             "data;tipo;start_1;end_1;start_2;end_2;pause_start;pause_end;ore_accreditate;note\n"
-            "05/01/2026;work;8,5;14,5;15;19,5;;;;Spezzato\n"
+            "05/01/2026;work;8,5;14,5;15;19,5;;;;Vecchio formato\n"
             "12/01/2026;ferie;;;;;;;30,5;Ferie\n"
         ).encode("utf-8")
         result = import_csv(content, self.user["id"])
@@ -40,9 +41,24 @@ class ImportTests(unittest.TestCase):
         self.assertEqual(result["vacations"], 1)
         self.assertEqual(result["total_errors"], 0)
         shift = db.get_shift_for_day(self.user["id"], "2026-01-05")
-        self.assertEqual(shift["work_segments"][0]["start"], "08:30")
+        self.assertEqual(shift["work_segments"], [{"start": "08:30", "end": "19:30"}])
+        self.assertEqual(shift["break_segments"], [{"start": "14:30", "end": "15:00"}])
+        self.assertEqual(shift_total_hours(shift), 10.5)
         vacations = db.list_vacations([self.user["id"]], "2026-01-01", "2026-01-31")
         self.assertEqual(vacations[0]["credited_hours"], 30.5)
+
+    def test_modern_single_shift_format(self):
+        content = (
+            "data;tipo;inizio_turno;fine_turno;inizio_pausa;fine_pausa;ore_accreditate;note\n"
+            "06/01/2026;work;08:00;19:30;11:00;15:00;;Turno con pausa\n"
+        ).encode("utf-8")
+        result = import_csv(content, self.user["id"])
+        self.assertEqual(result["imported"], 1)
+        self.assertEqual(result["total_errors"], 0)
+        shift = db.get_shift_for_day(self.user["id"], "2026-01-06")
+        self.assertEqual(shift["work_segments"], [{"start": "08:00", "end": "19:30"}])
+        self.assertEqual(shift["break_segments"], [{"start": "11:00", "end": "15:00"}])
+        self.assertEqual(shift_total_hours(shift), 7.5)
 
 
 if __name__ == "__main__":

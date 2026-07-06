@@ -25,8 +25,8 @@ def _normalize_header(value: str) -> str:
 ALIASES = {
     "date": {"date", "data", "giorno"},
     "type": {"type", "tipo", "tipologia"},
-    "start_1": {"start_1", "start1", "inizio_1", "inizio1", "entrata_1", "entrata1", "start"},
-    "end_1": {"end_1", "end1", "stop_1", "stop1", "fine_1", "fine1", "uscita_1", "uscita1", "stop"},
+    "start_1": {"start_1", "start1", "inizio_1", "inizio1", "entrata_1", "entrata1", "start", "inizio_turno"},
+    "end_1": {"end_1", "end1", "stop_1", "stop1", "fine_1", "fine1", "uscita_1", "uscita1", "stop", "fine_turno"},
     "start_2": {"start_2", "start2", "inizio_2", "inizio2", "entrata_2", "entrata2"},
     "end_2": {"end_2", "end2", "stop_2", "stop2", "fine_2", "fine2", "uscita_2", "uscita2"},
     "pause_start": {"pause_start", "pausa_start", "inizio_pausa", "pausa_inizio"},
@@ -115,27 +115,44 @@ def import_csv(content: bytes, user_id: int) -> dict[str, Any]:
                 vacations += 1
                 continue
 
-            work_segments: list[dict[str, str]] = []
-            break_segments: list[dict[str, str]] = []
-            for start_key, end_key in (("start_1", "end_1"), ("start_2", "end_2")):
-                if start_key in columns and end_key in columns:
-                    start_raw = row.get(columns[start_key], "").strip()
-                    end_raw = row.get(columns[end_key], "").strip()
-                    if start_raw or end_raw:
-                        if not start_raw or not end_raw:
-                            raise ValueError(f"Coppia {start_key}/{end_key} incompleta")
-                        work_segments.append({"start": parse_time_value(start_raw), "end": parse_time_value(end_raw)})
+            first_start = row.get(columns.get("start_1", ""), "").strip() if columns.get("start_1") else ""
+            first_end = row.get(columns.get("end_1", ""), "").strip() if columns.get("end_1") else ""
+            second_start = row.get(columns.get("start_2", ""), "").strip() if columns.get("start_2") else ""
+            second_end = row.get(columns.get("end_2", ""), "").strip() if columns.get("end_2") else ""
+            pause_start = row.get(columns.get("pause_start", ""), "").strip() if columns.get("pause_start") else ""
+            pause_end = row.get(columns.get("pause_end", ""), "").strip() if columns.get("pause_end") else ""
 
-            if "pause_start" in columns or "pause_end" in columns:
-                pause_start = row.get(columns.get("pause_start", ""), "").strip() if columns.get("pause_start") else ""
-                pause_end = row.get(columns.get("pause_end", ""), "").strip() if columns.get("pause_end") else ""
+            if not first_start or not first_end:
+                raise ValueError("Inizio turno o fine turno mancanti")
+            if bool(second_start) != bool(second_end):
+                raise ValueError("Seconda coppia Start/Stop incompleta")
+            if bool(pause_start) != bool(pause_end):
+                raise ValueError("Pausa incompleta")
+
+            # Compatibilità con i vecchi Google Sheet: due coppie Start/Stop
+            # significano un unico turno con la pausa compresa tra le due coppie.
+            if second_start and second_end:
                 if pause_start or pause_end:
-                    if not pause_start or not pause_end:
-                        raise ValueError("Pausa incompleta")
-                    break_segments.append({"start": parse_time_value(pause_start), "end": parse_time_value(pause_end)})
-
-            if not work_segments:
-                raise ValueError("Nessun intervallo di lavoro presente")
+                    raise ValueError("Usare la seconda coppia Start/Stop oppure la pausa esplicita, non entrambe")
+                work_segments = [{
+                    "start": parse_time_value(first_start),
+                    "end": parse_time_value(second_end),
+                }]
+                break_segments = [{
+                    "start": parse_time_value(first_end),
+                    "end": parse_time_value(second_start),
+                }]
+            else:
+                work_segments = [{
+                    "start": parse_time_value(first_start),
+                    "end": parse_time_value(first_end),
+                }]
+                break_segments = []
+                if pause_start and pause_end:
+                    break_segments.append({
+                        "start": parse_time_value(pause_start),
+                        "end": parse_time_value(pause_end),
+                    })
 
             existed = get_shift_for_day(user_id, row_date.isoformat()) is not None
             upsert_shift({
@@ -161,9 +178,8 @@ def import_csv(content: bytes, user_id: int) -> dict[str, Any]:
     }
 
 
-CSV_TEMPLATE = """data;tipo;start_1;end_1;start_2;end_2;pause_start;pause_end;ore_accreditate;note
-2026-01-05;work;08:30;14:30;;;;;;Turno mattina
-2026-01-06;work;08:30;14:30;15:00;19:30;;;;Turno spezzato
-2026-01-07;work;08:00;17:00;;;12:30;13:00;;Pausa esplicita
-2026-01-12;ferie;;;;;;;30,5;Settimana ferie
+CSV_TEMPLATE = """data;tipo;inizio_turno;fine_turno;inizio_pausa;fine_pausa;ore_accreditate;note
+2026-01-05;work;08:30;14:30;;;;Turno mattina
+2026-01-06;work;08:00;19:30;11:00;15:00;;Turno con pausa
+2026-01-12;ferie;;;;;30,5;Settimana ferie
 """

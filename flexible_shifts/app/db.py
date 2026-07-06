@@ -83,9 +83,48 @@ def init_db() -> None:
                 UNIQUE(user_id, start_date)
             );
 
+            CREATE TABLE IF NOT EXISTS shift_presets (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                name TEXT NOT NULL COLLATE NOCASE,
+                start_time TEXT NOT NULL,
+                end_time TEXT NOT NULL,
+                pause_start TEXT,
+                pause_end TEXT,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                UNIQUE(user_id, name)
+            );
+
             CREATE INDEX IF NOT EXISTS idx_shifts_user_date ON shifts(user_id, shift_date);
             CREATE INDEX IF NOT EXISTS idx_vacations_user_date ON vacations(user_id, start_date, end_date);
+            CREATE INDEX IF NOT EXISTS idx_presets_user_name ON shift_presets(user_id, name);
             """
+        )
+        _migrate_legacy_shift_segments(conn)
+
+
+def _migrate_legacy_shift_segments(conn: sqlite3.Connection) -> None:
+    """Convert old two-interval shifts into one shift plus one explicit pause."""
+    rows = conn.execute(
+        "SELECT id, work_segments, break_segments FROM shifts"
+    ).fetchall()
+    for row in rows:
+        work_segments = json.loads(row["work_segments"])
+        break_segments = json.loads(row["break_segments"])
+        if len(work_segments) != 2 or break_segments:
+            continue
+        first, second = work_segments
+        collapsed_work = [{"start": first["start"], "end": second["end"]}]
+        collapsed_break = [{"start": first["end"], "end": second["start"]}]
+        conn.execute(
+            "UPDATE shifts SET work_segments = ?, break_segments = ?, updated_at = ? WHERE id = ?",
+            (
+                json.dumps(collapsed_work, separators=(",", ":")),
+                json.dumps(collapsed_break, separators=(",", ":")),
+                _now(),
+                row["id"],
+            ),
         )
 
 
@@ -128,6 +167,20 @@ def row_to_vacation(row: sqlite3.Row) -> dict[str, Any]:
         "credited_hours": row["credited_hours"],
         "note": row["note"],
         "created_at": row["created_at"],
+    }
+
+
+def row_to_preset(row: sqlite3.Row) -> dict[str, Any]:
+    return {
+        "id": row["id"],
+        "user_id": row["user_id"],
+        "name": row["name"],
+        "start_time": row["start_time"],
+        "end_time": row["end_time"],
+        "pause_start": row["pause_start"],
+        "pause_end": row["pause_end"],
+        "created_at": row["created_at"],
+        "updated_at": row["updated_at"],
     }
 
 
@@ -217,6 +270,80 @@ def update_user(user_id: int, data: dict[str, Any]) -> dict[str, Any] | None:
 def delete_user(user_id: int) -> bool:
     with connect() as conn:
         cur = conn.execute("DELETE FROM users WHERE id = ?", (user_id,))
+        return cur.rowcount > 0
+
+
+def list_presets(user_id: int) -> list[dict[str, Any]]:
+    with connect() as conn:
+        rows = conn.execute(
+            "SELECT * FROM shift_presets WHERE user_id = ? ORDER BY name COLLATE NOCASE",
+            (user_id,),
+        ).fetchall()
+        return [row_to_preset(row) for row in rows]
+
+
+def get_preset(preset_id: int) -> dict[str, Any] | None:
+    with connect() as conn:
+        row = conn.execute(
+            "SELECT * FROM shift_presets WHERE id = ?", (preset_id,)
+        ).fetchone()
+        return row_to_preset(row) if row else None
+
+
+def create_preset(data: dict[str, Any]) -> dict[str, Any]:
+    now = _now()
+    try:
+        with connect() as conn:
+            cur = conn.execute(
+                """
+                INSERT INTO shift_presets (
+                    user_id, name, start_time, end_time, pause_start, pause_end, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    data["user_id"], data["name"].strip(), data["start_time"],
+                    data["end_time"], data.get("pause_start"), data.get("pause_end"),
+                    now, now,
+                ),
+            )
+            row = conn.execute(
+                "SELECT * FROM shift_presets WHERE id = ?", (cur.lastrowid,)
+            ).fetchone()
+            assert row
+            return row_to_preset(row)
+    except sqlite3.IntegrityError as exc:
+        raise ValueError("Esiste già un preset con questo nome per l’utente") from exc
+
+
+def update_preset(preset_id: int, data: dict[str, Any]) -> dict[str, Any] | None:
+    if not get_preset(preset_id):
+        return None
+    try:
+        with connect() as conn:
+            conn.execute(
+                """
+                UPDATE shift_presets SET
+                    user_id = ?, name = ?, start_time = ?, end_time = ?,
+                    pause_start = ?, pause_end = ?, updated_at = ?
+                WHERE id = ?
+                """,
+                (
+                    data["user_id"], data["name"].strip(), data["start_time"],
+                    data["end_time"], data.get("pause_start"), data.get("pause_end"),
+                    _now(), preset_id,
+                ),
+            )
+            row = conn.execute(
+                "SELECT * FROM shift_presets WHERE id = ?", (preset_id,)
+            ).fetchone()
+            return row_to_preset(row) if row else None
+    except sqlite3.IntegrityError as exc:
+        raise ValueError("Esiste già un preset con questo nome per l’utente") from exc
+
+
+def delete_preset(preset_id: int) -> bool:
+    with connect() as conn:
+        cur = conn.execute("DELETE FROM shift_presets WHERE id = ?", (preset_id,))
         return cur.rowcount > 0
 
 

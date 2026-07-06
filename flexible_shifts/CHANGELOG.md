@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.2.0
+
+- Sostituiti gli intervalli multipli con un solo Inizio turno e una sola Fine turno.
+- Mantenuta una pausa opzionale da sottrarre dal conteggio.
+- Aggiunti preset orari personalizzati per singolo utente.
+- Aggiunta gestione completa dei preset: creazione, modifica, eliminazione e applicazione al turno.
+- Aggiunta migrazione automatica dei vecchi turni con due intervalli in un turno unico con pausa.
+- Aggiornato il formato CSV; i vecchi CSV con doppio Start/Stop restano compatibili.
+
 
 ## 0.1.1
 

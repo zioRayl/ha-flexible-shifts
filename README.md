@@ -2,7 +2,7 @@
 
 Repository Home Assistant per gestire turni completamente variabili, pause, ferie settimanali e report annuali.
 
-La prima versione nasce dalla struttura del foglio `Orari 2026`: calendario con due coppie Start/Stop per giorno, totale settimanale e report annuale con ore totali, straordinari, standard, giorni weekend lavorati, weekend disponibili, settimane di ferie e percentuale.
+Il progetto nasce dalla struttura del foglio `Orari 2026`: calendario settimanale, turni variabili con eventuale pausa, totale settimanale e report annuale con ore totali, straordinari, standard, giorni weekend lavorati, weekend disponibili, settimane di ferie e percentuale.
 
 ## Funzioni incluse
 
@@ -10,8 +10,9 @@ La prima versione nasce dalla struttura del foglio `Orari 2026`: calendario con 
 - Selettore multiplo utenti nella parte alta.
 - Vista predefinita settimanale, oltre a giorno e mese.
 - Navigazione tra settimane, mesi e anni precedenti.
-- Turni non standard con uno o più intervalli di lavoro.
+- Un solo intervallo per turno, espresso come **Inizio turno** e **Fine turno**.
 - Pausa opzionale con ora di inizio e fine, sottratta dal conteggio.
+- Preset orari personalizzati per ogni utente, con nome, inizio, fine e pausa.
 - Ferie gestite come settimana:
   - full-time: lunedì-venerdì;
   - part-time: lunedì-domenica.
@@ -37,7 +38,7 @@ Esempio di pubblicazione:
 ```bash
 git init
 git add .
-git commit -m "Release 0.1.1"
+git commit -m "Release 0.2.0"
 git branch -M main
 git remote add origin https://github.com/NOME-UTENTE/ha-flexible-shifts.git
 git push -u origin main
@@ -50,9 +51,10 @@ Dal menu a rotellina:
 1. Aprire **Gestione utenti**.
 2. Creare almeno un utente.
 3. Indicare full-time/part-time, base settimanale/mensile, ore previste e soglia straordinari.
-4. Inserire i turni dal pulsante **+ Turno**.
-5. Inserire una settimana di ferie dal pulsante **+ Ferie**.
-6. Aprire **Reportistica annuale** per il riepilogo.
+4. Creare, se utile, i preset dal menu **Preset orari**.
+5. Inserire i turni dal pulsante **+ Turno**, scegliendo un preset oppure compilando gli orari manualmente.
+6. Inserire una settimana di ferie dal pulsante **+ Ferie**.
+7. Aprire **Reportistica annuale** per il riepilogo.
 
 ## Regola dello standard mensile
 
@@ -92,9 +94,9 @@ Il pulsante **Scarica backup** crea e scarica una copia SQLite. I dati restano n
 
 Consultare [docs/CSV_IMPORT.md](docs/CSV_IMPORT.md). È incluso anche [samples/import_template.csv](samples/import_template.csv).
 
-## Limiti della versione 0.1.1
+## Limiti della versione 0.2.0
 
-- Fino a due intervalli di lavoro e un intervallo di pausa esplicita per giorno nell'interfaccia.
+- Ogni giorno prevede un solo turno con al massimo una pausa esplicita.
 - Il PDF del report viene prodotto tramite la funzione Stampa/Salva PDF del browser.
 - Non sono ancora presenti maggiorazioni economiche, banca ore, festività nazionali automatiche o ruoli di accesso separati.
 - L'importatore non legge direttamente PDF o fogli Google: il formato di interscambio previsto è CSV.

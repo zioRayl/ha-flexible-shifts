@@ -1,17 +1,24 @@
-# Release 0.1.1 - Correzione avvio Home Assistant
+# Release 0.2.0 - Turno singolo e preset orari
 
-Questa versione corregge il crash all'avvio osservato su Home Assistant con Python 3.14 e FastAPI 0.115.12.
+## Novità
 
-## Correzione
+- Il modulo turno ora mostra solo **Inizio turno** e **Fine turno**.
+- Rimane disponibile una pausa facoltativa con inizio e fine, sottratta dal totale.
+- Ogni utente può avere preset orari indipendenti.
+- I preset si creano dal menu a rotellina oppure direttamente dal modulo turno.
+- Selezionando un preset vengono compilati automaticamente inizio, fine e pausa.
 
-Gli endpoint DELETE per utenti, turni e ferie erano dichiarati con stato HTTP 204, ma lasciavano a FastAPI la response class predefinita. La combinazione causava l'errore:
+## Compatibilità dati
 
-```text
-AssertionError: Status code 204 must not have a response body
-```
+Al primo avvio, i vecchi turni salvati con due intervalli vengono convertiti automaticamente:
 
-Ora tutti gli endpoint restituiscono esplicitamente `Response(status_code=204)` e dichiarano `response_class=Response`.
+- primo Start -> Inizio turno;
+- secondo Stop -> Fine turno;
+- primo Stop -> Inizio pausa;
+- secondo Start -> Fine pausa.
 
-## Installazione
+L'importatore continua ad accettare anche i vecchi CSV con `start_1`, `end_1`, `start_2` ed `end_2`, interpretando la seconda coppia come pausa intermedia.
 
-Aggiornare il repository GitHub con questi file, quindi ricostruire/reinstallare l'add-on alla versione 0.1.1.
+## Aggiornamento
+
+Caricare i file sul repository GitHub, far rilevare l'aggiornamento a Home Assistant e aggiornare l'add-on alla versione 0.2.0. Il database esistente viene mantenuto.

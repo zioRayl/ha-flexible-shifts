@@ -22,8 +22,8 @@ class ApiSmokeTests(unittest.TestCase):
     def tearDown(self):
         self.tempdir.cleanup()
 
-    def test_create_user_shift_and_report(self):
-        user_response = self.client.post(
+    def create_user(self):
+        response = self.client.post(
             "/api/users",
             json={
                 "name": "Mario",
@@ -36,21 +36,58 @@ class ApiSmokeTests(unittest.TestCase):
                 "active": True,
             },
         )
-        self.assertEqual(user_response.status_code, 201)
-        user_id = user_response.json()["id"]
+        self.assertEqual(response.status_code, 201)
+        return response.json()
+
+    def test_create_user_preset_shift_and_report(self):
+        user = self.create_user()
+        user_id = user["id"]
+
+        preset_response = self.client.post(
+            "/api/presets",
+            json={
+                "user_id": user_id,
+                "name": "Spezzato",
+                "start_time": "08:00",
+                "end_time": "19:30",
+                "pause_start": "11:00",
+                "pause_end": "15:00",
+            },
+        )
+        self.assertEqual(preset_response.status_code, 201)
+        preset_id = preset_response.json()["id"]
+
+        presets = self.client.get(f"/api/presets?user_id={user_id}")
+        self.assertEqual(presets.status_code, 200)
+        self.assertEqual(len(presets.json()), 1)
+        self.assertEqual(presets.json()[0]["name"], "Spezzato")
+
+        update_preset = self.client.put(
+            f"/api/presets/{preset_id}",
+            json={
+                "user_id": user_id,
+                "name": "Spezzato lungo",
+                "start_time": "08:00",
+                "end_time": "20:00",
+                "pause_start": "11:00",
+                "pause_end": "15:00",
+            },
+        )
+        self.assertEqual(update_preset.status_code, 200)
+        self.assertEqual(update_preset.json()["name"], "Spezzato lungo")
 
         shift_response = self.client.post(
             "/api/shifts",
             json={
                 "user_id": user_id,
                 "date": "2026-01-10",
-                "work_segments": [{"start": "08:30", "end": "14:30"}],
-                "break_segments": [],
+                "work_segments": [{"start": "08:00", "end": "19:30"}],
+                "break_segments": [{"start": "11:00", "end": "15:00"}],
                 "note": "test",
             },
         )
         self.assertEqual(shift_response.status_code, 201)
-        self.assertEqual(shift_response.json()["total_hours"], 6.0)
+        self.assertEqual(shift_response.json()["total_hours"], 7.5)
 
         calendar = self.client.get(
             f"/api/calendar?user_ids={user_id}&start=2026-01-05&end=2026-01-11"
@@ -64,12 +101,16 @@ class ApiSmokeTests(unittest.TestCase):
 
         health = self.client.get("/api/health")
         self.assertEqual(health.status_code, 200)
-        self.assertEqual(health.json()["version"], "0.1.1")
+        self.assertEqual(health.json()["version"], "0.2.0")
 
         shift_id = shift_response.json()["id"]
         delete_shift = self.client.delete(f"/api/shifts/{shift_id}")
         self.assertEqual(delete_shift.status_code, 204)
         self.assertEqual(delete_shift.content, b"")
+
+        delete_preset = self.client.delete(f"/api/presets/{preset_id}")
+        self.assertEqual(delete_preset.status_code, 204)
+        self.assertEqual(delete_preset.content, b"")
 
         vacation_response = self.client.post(
             "/api/vacations",
@@ -88,6 +129,37 @@ class ApiSmokeTests(unittest.TestCase):
         delete_user = self.client.delete(f"/api/users/{user_id}")
         self.assertEqual(delete_user.status_code, 204)
         self.assertEqual(delete_user.content, b"")
+
+    def test_multiple_work_intervals_are_rejected(self):
+        user_id = self.create_user()["id"]
+        response = self.client.post(
+            "/api/shifts",
+            json={
+                "user_id": user_id,
+                "date": "2026-01-11",
+                "work_segments": [
+                    {"start": "08:00", "end": "11:00"},
+                    {"start": "15:00", "end": "19:30"},
+                ],
+                "break_segments": [],
+                "note": "vecchio formato",
+            },
+        )
+        self.assertEqual(response.status_code, 422)
+
+    def test_pause_must_be_inside_shift(self):
+        user_id = self.create_user()["id"]
+        response = self.client.post(
+            "/api/shifts",
+            json={
+                "user_id": user_id,
+                "date": "2026-01-11",
+                "work_segments": [{"start": "08:00", "end": "14:00"}],
+                "break_segments": [{"start": "15:00", "end": "16:00"}],
+                "note": "pausa fuori turno",
+            },
+        )
+        self.assertEqual(response.status_code, 422)
 
 
 if __name__ == "__main__":

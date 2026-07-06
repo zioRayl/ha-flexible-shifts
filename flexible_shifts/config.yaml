@@ -1,7 +1,7 @@
 name: Flexible Shifts
-version: "0.1.1"
+version: "0.2.0"
 slug: flexible_shifts
-description: Gestione flessibile di turni, pause, ferie e report annuali per Home Assistant.
+description: Gestione flessibile di turni, pause, preset orari, ferie e report annuali per Home Assistant.
 arch:
   - aarch64
   - amd64

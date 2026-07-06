@@ -109,6 +109,25 @@ class CalculationTests(unittest.TestCase):
         self.assertEqual(report["summary"]["standard_hours"], 610.0)
         self.assertEqual(report["summary"]["weekend_days_available"], 44)
 
+    def test_legacy_shift_migration(self):
+        db.upsert_shift(
+            {
+                "user_id": self.user["id"],
+                "date": "2026-02-02",
+                "work_segments": [
+                    {"start": "08:00", "end": "11:00"},
+                    {"start": "15:00", "end": "19:30"},
+                ],
+                "break_segments": [],
+                "note": "legacy",
+            }
+        )
+        db.init_db()
+        shift = db.get_shift_for_day(self.user["id"], "2026-02-02")
+        self.assertEqual(shift["work_segments"], [{"start": "08:00", "end": "19:30"}])
+        self.assertEqual(shift["break_segments"], [{"start": "11:00", "end": "15:00"}])
+        self.assertEqual(shift_total_hours(shift), 7.5)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -58,6 +58,7 @@
         <button id="settingsButton" class="icon-button gear" type="button" aria-label="Impostazioni">⚙</button>
         <div id="settingsMenu" class="popover settings-menu hidden">
           <button data-action="users" type="button">Gestione utenti</button>
+          <button data-action="presets" type="button">Preset orari</button>
           <button data-action="reports" type="button">Reportistica annuale</button>
           <button data-action="import" type="button">Importa / Esporta</button>
           <button data-action="backup" type="button">Scarica backup</button>
@@ -77,7 +78,7 @@
       <div class="dialog-header">
         <div>
           <h2 id="shiftDialogTitle">Nuovo turno</h2>
-          <p>Inserisci uno o più intervalli di lavoro e, se necessario, una pausa esplicita.</p>
+          <p>Inserisci l’orario complessivo del turno e, se prevista, la pausa da sottrarre.</p>
         </div>
         <button class="dialog-close" type="button" data-close-dialog="shiftDialog" aria-label="Chiudi">×</button>
       </div>
@@ -91,11 +92,23 @@
         </label>
       </div>
 
-      <div class="section-heading">
-        <h3>Intervalli di lavoro</h3>
-        <button id="addWorkSegment" class="text-button" type="button">+ Aggiungi intervallo</button>
+      <div class="preset-picker-row">
+        <label>Preset orario
+          <select id="shiftPreset">
+            <option value="">Nessun preset</option>
+          </select>
+        </label>
+        <button id="managePresetsFromShift" class="secondary-button" type="button">Gestisci preset</button>
       </div>
-      <div id="workSegments" class="segments"></div>
+
+      <div class="form-grid two-cols">
+        <label>Inizio turno
+          <input id="shiftStart" type="time" required>
+        </label>
+        <label>Fine turno
+          <input id="shiftEnd" type="time" required>
+        </label>
+      </div>
 
       <label class="toggle-row">
         <input id="pauseEnabled" type="checkbox">
@@ -218,6 +231,61 @@
     </div>
   </dialog>
 
+  <dialog id="presetsDialog" class="dialog wide-dialog">
+    <div class="dialog-header">
+      <div>
+        <h2>Preset orari</h2>
+        <p>Crea orari predefiniti separati per ogni utente.</p>
+      </div>
+      <button class="dialog-close" data-close-dialog="presetsDialog" aria-label="Chiudi">×</button>
+    </div>
+    <div class="preset-user-selector">
+      <label>Utente
+        <select id="presetUser"></select>
+      </label>
+    </div>
+    <div class="presets-layout">
+      <div>
+        <div id="presetsList" class="presets-list"></div>
+      </div>
+      <form id="presetForm" class="preset-form">
+        <input id="presetId" type="hidden">
+        <h3 id="presetFormTitle">Nuovo preset</h3>
+        <label>Nome preset
+          <input id="presetName" type="text" required maxlength="100" placeholder="Es. Mattina, Pomeriggio, Spezzato">
+        </label>
+        <div class="form-grid two-cols">
+          <label>Inizio turno
+            <input id="presetStart" type="time" required>
+          </label>
+          <label>Fine turno
+            <input id="presetEnd" type="time" required>
+          </label>
+        </div>
+        <label class="toggle-row">
+          <input id="presetPauseEnabled" type="checkbox">
+          <span>Il preset prevede una pausa</span>
+        </label>
+        <div id="presetPauseFields" class="form-grid two-cols hidden">
+          <label>Inizio pausa
+            <input id="presetPauseStart" type="time">
+          </label>
+          <label>Fine pausa
+            <input id="presetPauseEnd" type="time">
+          </label>
+        </div>
+        <div id="presetCalculatedTotal" class="calculated-total">Totale: 0 h</div>
+        <div class="dialog-actions split-actions">
+          <button id="deletePresetButton" class="danger-button hidden" type="button">Elimina</button>
+          <div class="right-actions">
+            <button id="newPresetButton" class="secondary-button" type="button">Nuovo</button>
+            <button class="primary-button" type="submit">Salva preset</button>
+          </div>
+        </div>
+      </form>
+    </div>
+  </dialog>
+
   <dialog id="reportDialog" class="dialog report-dialog">
     <div class="dialog-header report-header">
       <div>
@@ -280,13 +348,13 @@
   <dialog id="aboutDialog" class="dialog small-dialog">
     <div class="dialog-header">
       <div>
-        <h2>Flexible Shifts 0.1.1</h2>
-        <p>Prima versione di prova.</p>
+        <h2>Flexible Shifts 0.2.0</h2>
+        <p>Turni singoli con pausa e preset personalizzati.</p>
       </div>
       <button class="dialog-close" data-close-dialog="aboutDialog" aria-label="Chiudi">×</button>
     </div>
     <div class="info-box">
-      Vista settimanale predefinita, utenti multipli, turni spezzati, pause, ferie settimanali, report annuale, weekend lavorati, CSV e sensori Home Assistant.
+      Vista settimanale predefinita, utenti multipli, inizio/fine turno, pausa esplicita, preset per utente, ferie settimanali, report annuale, weekend lavorati, CSV e sensori Home Assistant.
     </div>
   </dialog>
 

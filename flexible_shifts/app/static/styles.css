@@ -269,3 +269,52 @@ hr { border: 0; border-top: 1px solid var(--border); margin: 20px 0; }
   .report-layout { grid-template-columns: 1fr 230px; }
   .report-table th { position: static; }
 }
+
+/* Preset orari e turno singolo */
+.preset-picker-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: end;
+  margin-bottom: 4px;
+}
+.preset-picker-row label { margin-bottom: 13px; }
+.preset-picker-row .secondary-button { margin-bottom: 13px; }
+.preset-user-selector { padding: 0 20px; }
+.preset-user-selector label { max-width: 360px; }
+.presets-layout {
+  display: grid;
+  grid-template-columns: 320px 1fr;
+  gap: 18px;
+  padding: 0 20px 20px;
+}
+.presets-list {
+  display: grid;
+  gap: 7px;
+  max-height: 560px;
+  overflow: auto;
+}
+.preset-list-item {
+  display: grid;
+  gap: 3px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px;
+  background: var(--surface-2);
+  cursor: pointer;
+}
+.preset-list-item:hover,
+.preset-list-item.active { border-color: var(--primary); }
+.preset-list-item small { color: var(--muted); }
+.preset-form {
+  border-left: 1px solid var(--border);
+  padding-left: 18px;
+}
+.preset-form h3 { margin-top: 0; }
+
+@media (max-width: 760px) {
+  .preset-picker-row { grid-template-columns: 1fr; }
+  .preset-picker-row .secondary-button { margin-top: -5px; }
+  .presets-layout { grid-template-columns: 1fr; }
+  .preset-form { border-left: 0; border-top: 1px solid var(--border); padding: 18px 0 0; }
+}

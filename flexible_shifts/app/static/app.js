@@ -16,6 +16,7 @@ const state = {
   calendarData: { shifts: [], vacations: [] },
   range: null,
   reportYear: new Date().getFullYear(),
+  presetsByUser: {},
 };
 
 const $ = (selector) => document.querySelector(selector);
@@ -109,6 +110,7 @@ function getUser(userId) {
 async function loadUsers(preserveSelection = true) {
   const oldSelection = preserveSelection ? [...state.selectedUserIds] : [];
   state.users = await api('users');
+  state.presetsByUser = {};
   const activeIds = state.users.filter((user) => user.active).map((user) => user.id);
   state.selectedUserIds = oldSelection.filter((id) => activeIds.includes(id));
   if (!state.selectedUserIds.length && activeIds.length) state.selectedUserIds = [activeIds[0]];
@@ -150,7 +152,7 @@ function populateUserSelects() {
   const options = state.users.filter((user) => user.active).map((user) =>
     `<option value="${user.id}">${escapeHtml(user.name)}</option>`
   ).join('');
-  ['#shiftUser', '#vacationUser', '#reportUser', '#importUser', '#exportUser'].forEach((selector) => {
+  ['#shiftUser', '#vacationUser', '#reportUser', '#importUser', '#exportUser', '#presetUser'].forEach((selector) => {
     const select = $(selector);
     const previous = select.value;
     select.innerHTML = options;
@@ -216,12 +218,14 @@ function vacationsForDate(dateString) {
 }
 
 function shiftTimes(shift) {
-  return shift.work_segments.map((segment) => `${segment.start}-${segment.end}`).join(' · ');
+  const segments = shift.work_segments || [];
+  if (!segments.length) return '';
+  return `${segments[0].start}-${segments[segments.length - 1].end}`;
 }
 
 function pauseText(shift) {
-  if (!shift.break_segments.length) return '';
-  return shift.break_segments.map((segment) => `${segment.start}-${segment.end}`).join(' · ');
+  const pause = shift.break_segments?.[0];
+  return pause ? `${pause.start}-${pause.end}` : '';
 }
 
 function shiftCard(shift, compact = false) {
@@ -365,52 +369,87 @@ function renderSummary() {
   }).join('');
 }
 
-function addSegmentRow(start = '', end = '') {
-  const row = document.createElement('div');
-  row.className = 'segment-row';
-  row.innerHTML = `
-    <label>Start<input class="segment-start" type="time" required value="${escapeHtml(start)}"></label>
-    <label>Stop<input class="segment-end" type="time" required value="${escapeHtml(end)}"></label>
-    <button class="remove-segment" type="button" title="Rimuovi">×</button>`;
-  row.querySelector('.remove-segment').addEventListener('click', () => {
-    if ($('#workSegments').children.length <= 1) return showToast('È necessario almeno un intervallo', true);
-    row.remove();
-    calculateShiftTotal();
-  });
-  row.querySelectorAll('input').forEach((input) => input.addEventListener('input', calculateShiftTotal));
-  $('#workSegments').append(row);
-}
-
 function minutesBetween(start, end) {
   if (!start || !end) return 0;
   const [sh, sm] = start.split(':').map(Number);
   const [eh, em] = end.split(':').map(Number);
-  let a = sh * 60 + sm;
+  const a = sh * 60 + sm;
   let b = eh * 60 + em;
   if (b <= a) b += 1440;
   return b - a;
 }
 
 function calculateShiftTotal() {
-  let total = $$('.segment-row').reduce((sum, row) => sum + minutesBetween(row.querySelector('.segment-start').value, row.querySelector('.segment-end').value), 0);
+  let total = minutesBetween($('#shiftStart').value, $('#shiftEnd').value);
   if ($('#pauseEnabled').checked) total -= minutesBetween($('#pauseStart').value, $('#pauseEnd').value);
   $('#shiftCalculatedTotal').textContent = `Totale: ${formatHours(Math.max(0, total) / 60)} h`;
 }
 
-function openShiftDialog(dateString = isoDate(state.currentDate), userId = null, shift = null) {
+async function loadPresets(userId, force = false) {
+  const key = String(userId || '');
+  if (!key) return [];
+  if (!force && state.presetsByUser[key]) return state.presetsByUser[key];
+  const presets = await api(`presets?user_id=${Number(userId)}`);
+  state.presetsByUser[key] = presets;
+  return presets;
+}
+
+async function populateShiftPresetSelect(userId, selectedId = '') {
+  const select = $('#shiftPreset');
+  const presets = await loadPresets(userId);
+  select.innerHTML = `<option value="">Nessun preset</option>${presets.map((preset) =>
+    `<option value="${preset.id}">${escapeHtml(preset.name)} · ${escapeHtml(preset.start_time)}-${escapeHtml(preset.end_time)}</option>`
+  ).join('')}`;
+  if (selectedId && presets.some((preset) => String(preset.id) === String(selectedId))) {
+    select.value = String(selectedId);
+  }
+}
+
+function applyPresetToShift(preset) {
+  if (!preset) return;
+  $('#shiftStart').value = preset.start_time;
+  $('#shiftEnd').value = preset.end_time;
+  const hasPause = Boolean(preset.pause_start && preset.pause_end);
+  $('#pauseEnabled').checked = hasPause;
+  $('#pauseFields').classList.toggle('hidden', !hasPause);
+  $('#pauseStart').value = preset.pause_start || '';
+  $('#pauseEnd').value = preset.pause_end || '';
+  calculateShiftTotal();
+}
+
+function editorValuesFromShift(shift) {
+  const segments = shift?.work_segments || [];
+  const first = segments[0] || { start: '', end: '' };
+  const last = segments[segments.length - 1] || first;
+  let pause = shift?.break_segments?.[0] || null;
+  if (!pause && segments.length === 2) {
+    pause = { start: segments[0].end, end: segments[1].start };
+  }
+  return {
+    start: first.start || '',
+    end: last.end || '',
+    pause,
+  };
+}
+
+async function openShiftDialog(dateString = isoDate(state.currentDate), userId = null, shift = null) {
   if (!state.users.some((user) => user.active)) return showToast('Crea prima almeno un utente', true);
+  const selectedUserId = Number(userId || state.selectedUserIds[0] || state.users.find((user) => user.active)?.id);
   $('#shiftId').value = shift?.id || '';
   $('#shiftDialogTitle').textContent = shift ? 'Modifica turno' : 'Nuovo turno';
-  $('#shiftUser').value = String(userId || state.selectedUserIds[0] || state.users.find((user) => user.active)?.id);
+  $('#shiftUser').value = String(selectedUserId);
   $('#shiftDate').value = dateString;
   $('#shiftNote').value = shift?.note || '';
-  $('#workSegments').innerHTML = '';
-  (shift?.work_segments || [{ start: '', end: '' }]).forEach((segment) => addSegmentRow(segment.start, segment.end));
-  const pause = shift?.break_segments?.[0];
-  $('#pauseEnabled').checked = Boolean(pause);
-  $('#pauseFields').classList.toggle('hidden', !pause);
-  $('#pauseStart').value = pause?.start || '';
-  $('#pauseEnd').value = pause?.end || '';
+  await populateShiftPresetSelect(selectedUserId);
+  $('#shiftPreset').value = '';
+
+  const values = editorValuesFromShift(shift);
+  $('#shiftStart').value = values.start;
+  $('#shiftEnd').value = values.end;
+  $('#pauseEnabled').checked = Boolean(values.pause);
+  $('#pauseFields').classList.toggle('hidden', !values.pause);
+  $('#pauseStart').value = values.pause?.start || '';
+  $('#pauseEnd').value = values.pause?.end || '';
   $('#deleteShiftButton').classList.toggle('hidden', !shift);
   calculateShiftTotal();
   $('#shiftDialog').showModal();
@@ -479,6 +518,84 @@ function renderUsersManagement() {
     const user = getUser(item.dataset.userId);
     if (user) fillUserForm(user);
   }));
+}
+
+function calculatePresetTotal() {
+  let total = minutesBetween($('#presetStart').value, $('#presetEnd').value);
+  if ($('#presetPauseEnabled').checked) {
+    total -= minutesBetween($('#presetPauseStart').value, $('#presetPauseEnd').value);
+  }
+  $('#presetCalculatedTotal').textContent = `Totale: ${formatHours(Math.max(0, total) / 60)} h`;
+}
+
+function resetPresetForm() {
+  $('#presetId').value = '';
+  $('#presetFormTitle').textContent = 'Nuovo preset';
+  $('#presetName').value = '';
+  $('#presetStart').value = '';
+  $('#presetEnd').value = '';
+  $('#presetPauseEnabled').checked = false;
+  $('#presetPauseFields').classList.add('hidden');
+  $('#presetPauseStart').value = '';
+  $('#presetPauseEnd').value = '';
+  $('#deletePresetButton').classList.add('hidden');
+  $$('.preset-list-item').forEach((item) => item.classList.remove('active'));
+  calculatePresetTotal();
+}
+
+function fillPresetForm(preset) {
+  $('#presetId').value = preset.id;
+  $('#presetFormTitle').textContent = `Modifica ${preset.name}`;
+  $('#presetName').value = preset.name;
+  $('#presetStart').value = preset.start_time;
+  $('#presetEnd').value = preset.end_time;
+  const hasPause = Boolean(preset.pause_start && preset.pause_end);
+  $('#presetPauseEnabled').checked = hasPause;
+  $('#presetPauseFields').classList.toggle('hidden', !hasPause);
+  $('#presetPauseStart').value = preset.pause_start || '';
+  $('#presetPauseEnd').value = preset.pause_end || '';
+  $('#deletePresetButton').classList.remove('hidden');
+  $$('.preset-list-item').forEach((item) => item.classList.toggle('active', Number(item.dataset.presetId) === preset.id));
+  calculatePresetTotal();
+}
+
+function renderPresetsManagement(presets) {
+  const list = $('#presetsList');
+  list.innerHTML = presets.map((preset) => `
+    <div class="preset-list-item" data-preset-id="${preset.id}">
+      <strong>${escapeHtml(preset.name)}</strong>
+      <small>${escapeHtml(preset.start_time)}-${escapeHtml(preset.end_time)}</small>
+      <small>${preset.pause_start ? `Pausa ${escapeHtml(preset.pause_start)}-${escapeHtml(preset.pause_end)}` : 'Senza pausa'}</small>
+    </div>`).join('') || '<div class="muted">Nessun preset creato per questo utente.</div>';
+  list.querySelectorAll('[data-preset-id]').forEach((item) => item.addEventListener('click', () => {
+    const preset = presets.find((entry) => entry.id === Number(item.dataset.presetId));
+    if (preset) fillPresetForm(preset);
+  }));
+}
+
+async function refreshPresetsManagement(force = true) {
+  const userId = Number($('#presetUser').value);
+  if (!userId) {
+    renderPresetsManagement([]);
+    return [];
+  }
+  const presets = await loadPresets(userId, force);
+  renderPresetsManagement(presets);
+  return presets;
+}
+
+async function openPresetsDialog(userId = null) {
+  const activeUsers = state.users.filter((user) => user.active);
+  if (!activeUsers.length) return showToast('Crea prima almeno un utente', true);
+  const selectedUserId = Number(userId || state.selectedUserIds[0] || activeUsers[0].id);
+  $('#presetUser').value = String(selectedUserId);
+  resetPresetForm();
+  $('#presetsDialog').showModal();
+  try {
+    await refreshPresetsManagement(false);
+  } catch (error) {
+    showToast(error.message, true);
+  }
 }
 
 function updateWeeklyModeVisibility() {
@@ -624,10 +741,20 @@ function wireEvents() {
 
   $('#addShiftButton').addEventListener('click', () => openShiftDialog());
   $('#addVacationButton').addEventListener('click', openVacationDialog);
-  $('#addWorkSegment').addEventListener('click', () => {
-    if ($('#workSegments').children.length >= 2) return showToast('La prima versione supporta al massimo due intervalli di lavoro per giorno', true);
-    addSegmentRow();
+  $('#shiftStart').addEventListener('input', calculateShiftTotal);
+  $('#shiftEnd').addEventListener('input', calculateShiftTotal);
+  $('#shiftUser').addEventListener('change', async () => {
+    try {
+      await populateShiftPresetSelect(Number($('#shiftUser').value));
+      $('#shiftPreset').value = '';
+    } catch (error) { showToast(error.message, true); }
   });
+  $('#shiftPreset').addEventListener('change', () => {
+    const userPresets = state.presetsByUser[String($('#shiftUser').value)] || [];
+    const preset = userPresets.find((item) => item.id === Number($('#shiftPreset').value));
+    if (preset) applyPresetToShift(preset);
+  });
+  $('#managePresetsFromShift').addEventListener('click', () => openPresetsDialog(Number($('#shiftUser').value)));
   $('#pauseEnabled').addEventListener('change', () => {
     $('#pauseFields').classList.toggle('hidden', !$('#pauseEnabled').checked);
     if (!$('#pauseEnabled').checked) { $('#pauseStart').value = ''; $('#pauseEnd').value = ''; }
@@ -638,10 +765,10 @@ function wireEvents() {
 
   $('#shiftForm').addEventListener('submit', async (event) => {
     event.preventDefault();
-    const workSegments = $$('.segment-row').map((row) => ({
-      start: row.querySelector('.segment-start').value,
-      end: row.querySelector('.segment-end').value,
-    }));
+    const workSegments = [{
+      start: $('#shiftStart').value,
+      end: $('#shiftEnd').value,
+    }];
     const breakSegments = $('#pauseEnabled').checked ? [{ start: $('#pauseStart').value, end: $('#pauseEnd').value }] : [];
     if (breakSegments.length && (!breakSegments[0].start || !breakSegments[0].end)) return showToast('Completa entrambi gli orari della pausa', true);
     const payload = {
@@ -730,12 +857,75 @@ function wireEvents() {
     } catch (error) { showToast(error.message, true); }
   });
 
+  $('#presetUser').addEventListener('change', async () => {
+    resetPresetForm();
+    try { await refreshPresetsManagement(true); }
+    catch (error) { showToast(error.message, true); }
+  });
+  $('#newPresetButton').addEventListener('click', resetPresetForm);
+  $('#presetPauseEnabled').addEventListener('change', () => {
+    const enabled = $('#presetPauseEnabled').checked;
+    $('#presetPauseFields').classList.toggle('hidden', !enabled);
+    if (!enabled) { $('#presetPauseStart').value = ''; $('#presetPauseEnd').value = ''; }
+    calculatePresetTotal();
+  });
+  ['#presetStart', '#presetEnd', '#presetPauseStart', '#presetPauseEnd'].forEach((selector) => {
+    $(selector).addEventListener('input', calculatePresetTotal);
+  });
+  $('#presetForm').addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const userId = Number($('#presetUser').value);
+    const hasPause = $('#presetPauseEnabled').checked;
+    if (hasPause && (!$('#presetPauseStart').value || !$('#presetPauseEnd').value)) {
+      return showToast('Completa entrambi gli orari della pausa', true);
+    }
+    const payload = {
+      user_id: userId,
+      name: $('#presetName').value.trim(),
+      start_time: $('#presetStart').value,
+      end_time: $('#presetEnd').value,
+      pause_start: hasPause ? $('#presetPauseStart').value : null,
+      pause_end: hasPause ? $('#presetPauseEnd').value : null,
+    };
+    try {
+      const id = $('#presetId').value;
+      await api(id ? `presets/${id}` : 'presets', {
+        method: id ? 'PUT' : 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      delete state.presetsByUser[String(userId)];
+      showToast(id ? 'Preset aggiornato' : 'Preset creato');
+      resetPresetForm();
+      await refreshPresetsManagement(true);
+      if ($('#shiftDialog').open && Number($('#shiftUser').value) === userId) {
+        await populateShiftPresetSelect(userId);
+      }
+    } catch (error) { showToast(error.message, true); }
+  });
+  $('#deletePresetButton').addEventListener('click', async () => {
+    const id = $('#presetId').value;
+    const userId = Number($('#presetUser').value);
+    if (!id || !confirm('Eliminare questo preset?')) return;
+    try {
+      await api(`presets/${id}`, { method: 'DELETE' });
+      delete state.presetsByUser[String(userId)];
+      showToast('Preset eliminato');
+      resetPresetForm();
+      await refreshPresetsManagement(true);
+      if ($('#shiftDialog').open && Number($('#shiftUser').value) === userId) {
+        await populateShiftPresetSelect(userId);
+      }
+    } catch (error) { showToast(error.message, true); }
+  });
+
   $('#settingsMenu').addEventListener('click', async (event) => {
     const button = event.target.closest('[data-action]');
     if (!button) return;
     closePopovers();
     const action = button.dataset.action;
     if (action === 'users') { resetUserForm(); $('#usersDialog').showModal(); }
+    if (action === 'presets') await openPresetsDialog();
     if (action === 'reports') await openReportDialog();
     if (action === 'import') openImportDialog();
     if (action === 'backup') download('backup');
@@ -774,6 +964,7 @@ function wireEvents() {
 async function init() {
   wireEvents();
   resetUserForm();
+  resetPresetForm();
   try {
     await loadUsers(false);
     await refreshCalendar();

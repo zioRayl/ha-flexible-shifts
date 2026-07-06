@@ -21,6 +21,7 @@ import db
 from calculations import (
     annual_report,
     normalize_segments,
+    parse_time_value,
     shift_total_hours,
     vacation_credit_hours,
 )
@@ -39,7 +40,7 @@ async def lifespan(_: FastAPI):
     yield
 
 
-app = FastAPI(title="Flexible Shifts", version="0.1.1", lifespan=lifespan)
+app = FastAPI(title="Flexible Shifts", version="0.2.0", lifespan=lifespan)
 
 
 @app.middleware("http")
@@ -77,11 +78,39 @@ class UserPayload(BaseModel):
         return self
 
 
+def _time_minutes(value: str) -> int:
+    hours, minutes = value.split(":")
+    return int(hours) * 60 + int(minutes)
+
+
+def _validate_shift_window(start: str, end: str, pause_start: str | None = None, pause_end: str | None = None) -> None:
+    if start == end:
+        raise ValueError("Inizio e fine turno non possono coincidere")
+    start_minutes = _time_minutes(start)
+    end_minutes = _time_minutes(end)
+    if end_minutes <= start_minutes:
+        end_minutes += 1440
+    if pause_start is None and pause_end is None:
+        return
+    if not pause_start or not pause_end:
+        raise ValueError("Compilare sia l’inizio sia la fine della pausa")
+    pause_start_minutes = _time_minutes(pause_start)
+    pause_end_minutes = _time_minutes(pause_end)
+    if pause_start_minutes < start_minutes:
+        pause_start_minutes += 1440
+    if pause_end_minutes <= start_minutes:
+        pause_end_minutes += 1440
+    if pause_end_minutes <= pause_start_minutes:
+        pause_end_minutes += 1440
+    if not (start_minutes <= pause_start_minutes < pause_end_minutes <= end_minutes):
+        raise ValueError("La pausa deve essere compresa nell’orario del turno")
+
+
 class ShiftPayload(BaseModel):
     user_id: int
     date: date
-    work_segments: list[TimeRange] = Field(min_length=1, max_length=8)
-    break_segments: list[TimeRange] = Field(default_factory=list, max_length=8)
+    work_segments: list[TimeRange] = Field(min_length=1, max_length=1)
+    break_segments: list[TimeRange] = Field(default_factory=list, max_length=1)
     note: str = Field(default="", max_length=1000)
 
     @field_validator("work_segments", "break_segments")
@@ -89,6 +118,36 @@ class ShiftPayload(BaseModel):
     def normalize_time_ranges(cls, value: list[TimeRange]) -> list[TimeRange]:
         normalized = normalize_segments([item.model_dump() for item in value])
         return [TimeRange(**item) for item in normalized]
+
+    @model_validator(mode="after")
+    def validate_single_shift(self) -> "ShiftPayload":
+        work = self.work_segments[0]
+        pause = self.break_segments[0] if self.break_segments else None
+        _validate_shift_window(
+            work.start, work.end, pause.start if pause else None, pause.end if pause else None
+        )
+        return self
+
+
+class PresetPayload(BaseModel):
+    user_id: int
+    name: str = Field(min_length=1, max_length=100)
+    start_time: str
+    end_time: str
+    pause_start: str | None = None
+    pause_end: str | None = None
+
+    @field_validator("start_time", "end_time", "pause_start", "pause_end", mode="before")
+    @classmethod
+    def normalize_time(cls, value: Any) -> str | None:
+        if value is None or str(value).strip() == "":
+            return None
+        return parse_time_value(str(value))
+
+    @model_validator(mode="after")
+    def validate_preset(self) -> "PresetPayload":
+        _validate_shift_window(self.start_time, self.end_time, self.pause_start, self.pause_end)
+        return self
 
 
 class VacationPayload(BaseModel):
@@ -125,7 +184,7 @@ def index() -> FileResponse:
 
 @app.get("/api/health")
 def health() -> dict[str, Any]:
-    return {"status": "ok", "version": "0.1.1", "time": datetime.now().isoformat()}
+    return {"status": "ok", "version": "0.2.0", "time": datetime.now().isoformat()}
 
 
 @app.get("/api/users")
@@ -154,6 +213,43 @@ def delete_user(user_id: int) -> Response:
     if not db.delete_user(user_id):
         raise HTTPException(status_code=404, detail="Utente non trovato")
     _sync_soon()
+    return Response(status_code=204)
+
+
+@app.get("/api/presets")
+def presets(user_id: int) -> list[dict[str, Any]]:
+    _require_user(user_id)
+    return db.list_presets(user_id)
+
+
+@app.post("/api/presets", status_code=201)
+def create_preset(payload: PresetPayload) -> dict[str, Any]:
+    _require_user(payload.user_id)
+    try:
+        return db.create_preset(payload.model_dump())
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@app.put("/api/presets/{preset_id}")
+def update_preset(preset_id: int, payload: PresetPayload) -> dict[str, Any]:
+    existing = db.get_preset(preset_id)
+    if not existing:
+        raise HTTPException(status_code=404, detail="Preset non trovato")
+    _require_user(payload.user_id)
+    try:
+        preset = db.update_preset(preset_id, payload.model_dump())
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    if not preset:
+        raise HTTPException(status_code=404, detail="Preset non trovato")
+    return preset
+
+
+@app.delete("/api/presets/{preset_id}", status_code=204, response_class=Response)
+def delete_preset(preset_id: int) -> Response:
+    if not db.delete_preset(preset_id):
+        raise HTTPException(status_code=404, detail="Preset non trovato")
     return Response(status_code=204)
 
 
@@ -277,21 +373,20 @@ def export_csv(user_id: int, year: int = Query(ge=2000, le=2100)) -> StreamingRe
     output = io.StringIO()
     writer = csv.writer(output, delimiter=";")
     writer.writerow([
-        "utente", "data", "tipo", "start_1", "end_1", "start_2", "end_2",
-        "pause_start", "pause_end", "ore_totali", "ore_accreditate", "note",
+        "utente", "data", "tipo", "inizio_turno", "fine_turno",
+        "inizio_pausa", "fine_pausa", "ore_totali", "ore_accreditate", "note",
     ])
     for shift in shifts:
-        work = shift["work_segments"] + [{"start": "", "end": ""}, {"start": "", "end": ""}]
-        breaks = shift["break_segments"] + [{"start": "", "end": ""}]
+        work = shift["work_segments"][0]
+        pause = shift["break_segments"][0] if shift["break_segments"] else {"start": "", "end": ""}
         writer.writerow([
-            user["name"], shift["date"], "work",
-            work[0]["start"], work[0]["end"], work[1]["start"], work[1]["end"],
-            breaks[0]["start"], breaks[0]["end"],
+            user["name"], shift["date"], "work", work["start"], work["end"],
+            pause["start"], pause["end"],
             str(shift_total_hours(shift)).replace(".", ","), "", shift["note"],
         ])
     for vacation in vacations:
         writer.writerow([
-            user["name"], vacation["start_date"], "ferie", "", "", "", "", "", "", "",
+            user["name"], vacation["start_date"], "ferie", "", "", "", "", "",
             str(vacation["credited_hours"]).replace(".", ","), vacation["note"],
         ])
 

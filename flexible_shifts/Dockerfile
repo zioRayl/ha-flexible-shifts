@@ -8,7 +8,7 @@ LABEL \
     io.hass.type="app" \
     io.hass.arch="${BUILD_ARCH}" \
     org.opencontainers.image.title="Home Assistant Flexible Shifts" \
-    org.opencontainers.image.description="Turni flessibili, pause, ferie e reportistica"
+    org.opencontainers.image.description="Turni flessibili, pause, preset orari, ferie e reportistica"
 
 RUN apk add --no-cache \
     python3 \
