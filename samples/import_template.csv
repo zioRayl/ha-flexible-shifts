@@ -1,0 +1,5 @@
+data;tipo;start_1;end_1;start_2;end_2;pause_start;pause_end;ore_accreditate;note
+2026-01-05;work;08:30;14:30;;;;;;Turno mattina
+2026-01-06;work;08:30;14:30;15:00;19:30;;;;Turno spezzato
+2026-01-07;work;08:00;17:00;;;12:30;13:00;;Pausa esplicita
+2026-01-12;ferie;;;;;;;30,5;Settimana ferie

@@ -1,0 +1,10 @@
+configuration:
+  timezone:
+    name: Fuso orario
+    description: Fuso orario usato dall'applicazione, per esempio Europe/Rome.
+  home_assistant_sync:
+    name: Sincronizzazione Home Assistant
+    description: Pubblica sensori e binary sensor per ogni utente attivo.
+  sync_interval_seconds:
+    name: Intervallo sincronizzazione
+    description: Secondi tra due aggiornamenti automatici dei sensori.

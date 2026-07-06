@@ -1,0 +1,295 @@
+<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <script>
+    if (!window.location.pathname.endsWith('/')) {
+      window.location.replace(window.location.pathname + '/' + window.location.search + window.location.hash);
+    }
+  </script>
+  <title>Flexible Shifts</title>
+  <link rel="stylesheet" href="./static/styles.css">
+</head>
+<body>
+  <header class="app-header">
+    <div class="brand">
+      <span class="brand-icon">◷</span>
+      <div>
+        <strong>Flexible Shifts</strong>
+        <small>Turni e report</small>
+      </div>
+    </div>
+
+    <div class="toolbar">
+      <div class="user-picker-wrap">
+        <button id="userPickerButton" class="control user-picker-button" type="button" aria-expanded="false">
+          <span id="userPickerLabel">Seleziona utenti</span>
+          <span>▾</span>
+        </button>
+        <div id="userPickerPanel" class="popover hidden">
+          <div class="popover-title">Utenti visibili</div>
+          <div id="userPickerList" class="check-list"></div>
+          <div class="popover-actions">
+            <button id="selectAllUsers" class="text-button" type="button">Tutti</button>
+            <button id="clearUsers" class="text-button" type="button">Nessuno</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="nav-group">
+        <button id="prevPeriod" class="icon-button" type="button" title="Periodo precedente">‹</button>
+        <button id="todayButton" class="control compact" type="button">Oggi</button>
+        <button id="nextPeriod" class="icon-button" type="button" title="Periodo successivo">›</button>
+      </div>
+
+      <h1 id="periodTitle" class="period-title">-</h1>
+
+      <div class="view-switch" role="group" aria-label="Vista calendario">
+        <button data-view="day" type="button">Giorno</button>
+        <button data-view="week" type="button" class="active">Settimana</button>
+        <button data-view="month" type="button">Mese</button>
+      </div>
+
+      <button id="addShiftButton" class="primary-button" type="button">+ Turno</button>
+      <button id="addVacationButton" class="secondary-button" type="button">+ Ferie</button>
+
+      <div class="settings-wrap">
+        <button id="settingsButton" class="icon-button gear" type="button" aria-label="Impostazioni">⚙</button>
+        <div id="settingsMenu" class="popover settings-menu hidden">
+          <button data-action="users" type="button">Gestione utenti</button>
+          <button data-action="reports" type="button">Reportistica annuale</button>
+          <button data-action="import" type="button">Importa / Esporta</button>
+          <button data-action="backup" type="button">Scarica backup</button>
+          <button data-action="sync" type="button">Sincronizza Home Assistant</button>
+          <button data-action="about" type="button">Informazioni</button>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <section id="summaryStrip" class="summary-strip"></section>
+  <main id="calendar" class="calendar-shell" aria-live="polite"></main>
+  <div id="toast" class="toast hidden" role="status"></div>
+
+  <dialog id="shiftDialog" class="dialog">
+    <form id="shiftForm" method="dialog">
+      <div class="dialog-header">
+        <div>
+          <h2 id="shiftDialogTitle">Nuovo turno</h2>
+          <p>Inserisci uno o più intervalli di lavoro e, se necessario, una pausa esplicita.</p>
+        </div>
+        <button class="dialog-close" type="button" data-close-dialog="shiftDialog" aria-label="Chiudi">×</button>
+      </div>
+      <input id="shiftId" type="hidden">
+      <div class="form-grid two-cols">
+        <label>Utente
+          <select id="shiftUser" required></select>
+        </label>
+        <label>Data
+          <input id="shiftDate" type="date" required>
+        </label>
+      </div>
+
+      <div class="section-heading">
+        <h3>Intervalli di lavoro</h3>
+        <button id="addWorkSegment" class="text-button" type="button">+ Aggiungi intervallo</button>
+      </div>
+      <div id="workSegments" class="segments"></div>
+
+      <label class="toggle-row">
+        <input id="pauseEnabled" type="checkbox">
+        <span>Il turno prevede una pausa da sottrarre</span>
+      </label>
+      <div id="pauseFields" class="form-grid two-cols hidden">
+        <label>Inizio pausa
+          <input id="pauseStart" type="time">
+        </label>
+        <label>Fine pausa
+          <input id="pauseEnd" type="time">
+        </label>
+      </div>
+
+      <label>Note
+        <textarea id="shiftNote" rows="3" maxlength="1000" placeholder="Facoltative"></textarea>
+      </label>
+      <div id="shiftCalculatedTotal" class="calculated-total">Totale: 0 h</div>
+
+      <div class="dialog-actions split-actions">
+        <button id="deleteShiftButton" class="danger-button hidden" type="button">Elimina turno</button>
+        <div class="right-actions">
+          <button class="secondary-button" value="cancel" type="button" data-close-dialog="shiftDialog">Annulla</button>
+          <button class="primary-button" type="submit">Salva turno</button>
+        </div>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="vacationDialog" class="dialog small-dialog">
+    <form id="vacationForm" method="dialog">
+      <div class="dialog-header">
+        <div>
+          <h2>Settimana di ferie</h2>
+          <p>La settimana viene normalizzata al lunedì.</p>
+        </div>
+        <button class="dialog-close" type="button" data-close-dialog="vacationDialog" aria-label="Chiudi">×</button>
+      </div>
+      <label>Utente
+        <select id="vacationUser" required></select>
+      </label>
+      <label>Una data della settimana
+        <input id="vacationDate" type="date" required>
+      </label>
+      <label>Ore accreditate
+        <input id="vacationHours" type="number" min="0" max="168" step="0.25" placeholder="Automatiche dal contratto">
+      </label>
+      <label>Note
+        <textarea id="vacationNote" rows="3"></textarea>
+      </label>
+      <div id="vacationRuleHint" class="info-box"></div>
+      <div class="dialog-actions">
+        <button class="secondary-button" type="button" data-close-dialog="vacationDialog">Annulla</button>
+        <button class="primary-button" type="submit">Salva ferie</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="usersDialog" class="dialog wide-dialog">
+    <div class="dialog-header">
+      <div>
+        <h2>Gestione utenti</h2>
+        <p>Contratto, obiettivi orari e soglie individuali degli straordinari.</p>
+      </div>
+      <button class="dialog-close" data-close-dialog="usersDialog" aria-label="Chiudi">×</button>
+    </div>
+    <div class="users-layout">
+      <div>
+        <div id="usersList" class="users-list"></div>
+      </div>
+      <form id="userForm" class="user-form">
+        <input id="userId" type="hidden">
+        <h3 id="userFormTitle">Nuovo utente</h3>
+        <label>Nome
+          <input id="userName" type="text" required maxlength="100">
+        </label>
+        <div class="form-grid two-cols">
+          <label>Tipo contratto
+            <select id="employmentType">
+              <option value="part_time">Part-time</option>
+              <option value="full_time">Full-time</option>
+            </select>
+          </label>
+          <label>Obiettivo espresso su base
+            <select id="targetBasis">
+              <option value="weekly">Settimanale</option>
+              <option value="monthly">Mensile</option>
+            </select>
+          </label>
+        </div>
+        <label>Ore previste
+          <input id="targetHours" type="number" min="0" max="744" step="0.25" required value="30.5">
+        </label>
+        <label id="weeklyModeLabel">Conversione mensile delle ore settimanali
+          <select id="monthlyFromWeeklyMode">
+            <option value="x4">Ore settimanali × 4 (compatibile con il foglio)</option>
+            <option value="annualized">Ore settimanali × 52 / 12</option>
+          </select>
+        </label>
+        <div class="form-grid two-cols">
+          <label>Straordinari accettabili da
+            <input id="overtimeMin" type="number" min="0" step="0.25" value="0">
+          </label>
+          <label>Straordinari accettabili fino a
+            <input id="overtimeMax" type="number" min="0" step="0.25" value="12">
+          </label>
+        </div>
+        <label class="toggle-row">
+          <input id="userActive" type="checkbox" checked>
+          <span>Utente attivo</span>
+        </label>
+        <div class="dialog-actions split-actions">
+          <button id="deleteUserButton" class="danger-button hidden" type="button">Elimina</button>
+          <div class="right-actions">
+            <button id="newUserButton" class="secondary-button" type="button">Nuovo</button>
+            <button class="primary-button" type="submit">Salva utente</button>
+          </div>
+        </div>
+      </form>
+    </div>
+  </dialog>
+
+  <dialog id="reportDialog" class="dialog report-dialog">
+    <div class="dialog-header report-header">
+      <div>
+        <h2>Reportistica annuale</h2>
+        <p>Aggiornata automaticamente a ogni modifica.</p>
+      </div>
+      <div class="report-controls">
+        <select id="reportUser"></select>
+        <button id="reportPrevYear" class="icon-button" type="button">‹</button>
+        <strong id="reportYearLabel"></strong>
+        <button id="reportNextYear" class="icon-button" type="button">›</button>
+        <button id="printReport" class="secondary-button" type="button">Stampa / PDF</button>
+        <button class="dialog-close" data-close-dialog="reportDialog" aria-label="Chiudi">×</button>
+      </div>
+    </div>
+    <div id="reportContent" class="report-content"></div>
+  </dialog>
+
+  <dialog id="importDialog" class="dialog wide-dialog">
+    <div class="dialog-header">
+      <div>
+        <h2>Importa / Esporta</h2>
+        <p>Importa gli orari storici da CSV oppure esporta un anno completo.</p>
+      </div>
+      <button class="dialog-close" data-close-dialog="importDialog" aria-label="Chiudi">×</button>
+    </div>
+    <div class="import-grid">
+      <form id="importForm" class="panel-card">
+        <h3>Importazione CSV</h3>
+        <label>Utente destinatario
+          <select id="importUser" required></select>
+        </label>
+        <label>File CSV
+          <input id="importFile" type="file" accept=".csv,.txt,text/csv" required>
+        </label>
+        <p class="muted">Sono supportati separatori virgola o punto e virgola, date italiane/ISO e orari come 13:30, 13.30 o 13,5.</p>
+        <div class="stacked-actions">
+          <button class="primary-button" type="submit">Importa file</button>
+          <button id="downloadTemplate" class="secondary-button" type="button">Scarica modello CSV</button>
+        </div>
+        <pre id="importResult" class="result-box hidden"></pre>
+      </form>
+      <div class="panel-card">
+        <h3>Esportazione annuale</h3>
+        <label>Utente
+          <select id="exportUser"></select>
+        </label>
+        <label>Anno
+          <input id="exportYear" type="number" min="2000" max="2100">
+        </label>
+        <button id="exportCsvButton" class="primary-button" type="button">Esporta CSV</button>
+        <hr>
+        <h3>Backup</h3>
+        <p class="muted">Scarica una copia completa del database SQLite.</p>
+        <button id="backupButton" class="secondary-button" type="button">Scarica database</button>
+      </div>
+    </div>
+  </dialog>
+
+  <dialog id="aboutDialog" class="dialog small-dialog">
+    <div class="dialog-header">
+      <div>
+        <h2>Flexible Shifts 0.1.0</h2>
+        <p>Prima versione di prova.</p>
+      </div>
+      <button class="dialog-close" data-close-dialog="aboutDialog" aria-label="Chiudi">×</button>
+    </div>
+    <div class="info-box">
+      Vista settimanale predefinita, utenti multipli, turni spezzati, pause, ferie settimanali, report annuale, weekend lavorati, CSV e sensori Home Assistant.
+    </div>
+  </dialog>
+
+  <script src="./static/app.js"></script>
+</body>
+</html>

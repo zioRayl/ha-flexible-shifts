@@ -1,0 +1,10 @@
+configuration:
+  timezone:
+    name: Time zone
+    description: Time zone used by the application, for example Europe/Rome.
+  home_assistant_sync:
+    name: Home Assistant synchronization
+    description: Publish sensors and binary sensors for each active user.
+  sync_interval_seconds:
+    name: Synchronization interval
+    description: Seconds between automatic sensor updates.
