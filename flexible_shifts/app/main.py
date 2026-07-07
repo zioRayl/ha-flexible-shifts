@@ -41,7 +41,7 @@ async def lifespan(_: FastAPI):
     yield
 
 
-app = FastAPI(title="Flexible Shifts", version="0.3.0", lifespan=lifespan)
+app = FastAPI(title="Flexible Shifts", version="0.4.0", lifespan=lifespan)
 
 
 @app.middleware("http")
@@ -70,6 +70,7 @@ class UserPayload(BaseModel):
     monthly_from_weekly_mode: Literal["x4", "annualized"] = "x4"
     overtime_min: float = Field(default=0, ge=0, le=744)
     overtime_max: float = Field(default=12, ge=0, le=744)
+    color: str = Field(default="#2563EB", pattern=r"^#[0-9A-Fa-f]{6}$")
     active: bool = True
 
     @model_validator(mode="after")
@@ -200,7 +201,7 @@ def index() -> FileResponse:
 
 @app.get("/api/health")
 def health() -> dict[str, Any]:
-    return {"status": "ok", "version": "0.3.0", "time": datetime.now().isoformat()}
+    return {"status": "ok", "version": "0.4.0", "time": datetime.now().isoformat()}
 
 
 @app.get("/api/users")

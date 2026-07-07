@@ -1,14 +1,23 @@
 # Changelog
 
+## 0.4.0
+
+- Aggiunto un colore personalizzabile per ogni utente.
+- Applicato il colore a turni, ferie, vista mensile, vista giornaliera, riepiloghi ed elenchi utenti.
+- Aggiunta migrazione automatica del database con assegnazione di colori distinti agli utenti esistenti.
+- Ottimizzato il layout responsive per desktop, tablet e smartphone.
+- La vista settimanale passa da 7 a 4, 2 o 1 colonna in base allo spazio disponibile.
+- La vista mensile diventa un elenco cronologico leggibile sui dispositivi più piccoli.
+
 ## 0.3.0
 
 - Riordinato il report annuale: Mese, Ore totali, Straordinari, Standard, GWE lavorati, Su, %, Settimane Ferie.
 - Rimosso il Saldo dalla tabella e dal riepilogo del report.
-- Le ferie possono ora essere inserite per un singolo giorno o per un intervallo libero.
+- Le ferie possono essere inserite per un singolo giorno o per un intervallo libero.
 - Il credito ferie automatico viene calcolato in proporzione ai giorni selezionati.
 - Per i full-time si conteggiano lunedì-venerdì; per i part-time lunedì-domenica.
-- Le Settimane Ferie sono espresse come equivalente frazionario: un giorno full-time vale 0,20 settimane, un giorno part-time circa 0,14.
-- Migliorati importazione ed esportazione CSV con la colonna `data_fine`.
+- Le Settimane Ferie sono espresse come equivalente frazionario.
+- Migliorate importazione ed esportazione CSV con la colonna `data_fine`.
 - Mantenuta la compatibilità con le ferie settimanali già salvate e con il payload 0.2.x.
 - Resa la voce Turni accessibile a tutti gli utenti autenticati di Home Assistant (`panel_admin: false`).
 
@@ -21,10 +30,9 @@
 - Aggiunta migrazione automatica dei vecchi turni con due intervalli in un turno unico con pausa.
 - Aggiornato il formato CSV; i vecchi CSV con doppio Start/Stop restano compatibili.
 
-
 ## 0.1.1
 
-- Corretto l'avvio con FastAPI/Python 3.14: gli endpoint DELETE ora restituiscono una risposta HTTP 204 esplicita senza corpo.
+- Corretto l'avvio con FastAPI/Python 3.14: gli endpoint DELETE restituiscono una risposta HTTP 204 esplicita senza corpo.
 - Aggiunti test automatici per eliminazione utenti, turni e ferie.
 
 ## 0.1.0

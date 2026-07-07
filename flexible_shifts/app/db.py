@@ -12,6 +12,17 @@ from typing import Any, Iterator
 
 DB_PATH = os.environ.get("SHIFT_MANAGER_DB", "/data/flexible_shifts.db")
 
+USER_COLOR_PALETTE = [
+    "#2563EB", "#DC2626", "#16A34A", "#9333EA", "#EA580C",
+    "#0891B2", "#DB2777", "#65A30D", "#4F46E5", "#CA8A04",
+]
+COLOR_PATTERN = re.compile(r"^#[0-9A-Fa-f]{6}$")
+
+
+def normalize_color(value: str | None, fallback: str = "#2563EB") -> str:
+    color = str(value or "").strip().upper()
+    return color if COLOR_PATTERN.fullmatch(color) else fallback
+
 
 def _now() -> str:
     return datetime.now().isoformat(timespec="seconds")
@@ -55,6 +66,7 @@ def init_db() -> None:
                     CHECK (monthly_from_weekly_mode IN ('x4', 'annualized')),
                 overtime_min REAL NOT NULL DEFAULT 0,
                 overtime_max REAL NOT NULL DEFAULT 12,
+                color TEXT NOT NULL DEFAULT '#2563EB',
                 active INTEGER NOT NULL DEFAULT 1,
                 created_at TEXT NOT NULL,
                 updated_at TEXT NOT NULL
@@ -101,7 +113,23 @@ def init_db() -> None:
             CREATE INDEX IF NOT EXISTS idx_presets_user_name ON shift_presets(user_id, name);
             """
         )
+        _migrate_user_colors(conn)
         _migrate_legacy_shift_segments(conn)
+
+
+def _migrate_user_colors(conn: sqlite3.Connection) -> None:
+    """Add the per-user color column and assign distinct defaults to legacy users."""
+    columns = {row["name"] for row in conn.execute("PRAGMA table_info(users)").fetchall()}
+    column_added = "color" not in columns
+    if column_added:
+        conn.execute("ALTER TABLE users ADD COLUMN color TEXT NOT NULL DEFAULT '#2563EB'")
+
+    rows = conn.execute("SELECT id, color FROM users ORDER BY id").fetchall()
+    for index, row in enumerate(rows):
+        current = row["color"] if "color" in row.keys() else None
+        if column_added or not COLOR_PATTERN.fullmatch(str(current or "")):
+            color = USER_COLOR_PALETTE[index % len(USER_COLOR_PALETTE)]
+            conn.execute("UPDATE users SET color = ? WHERE id = ?", (color, row["id"]))
 
 
 def _migrate_legacy_shift_segments(conn: sqlite3.Connection) -> None:
@@ -139,6 +167,7 @@ def row_to_user(row: sqlite3.Row) -> dict[str, Any]:
         "monthly_from_weekly_mode": row["monthly_from_weekly_mode"],
         "overtime_min": row["overtime_min"],
         "overtime_max": row["overtime_max"],
+        "color": normalize_color(row["color"]),
         "active": bool(row["active"]),
         "created_at": row["created_at"],
         "updated_at": row["updated_at"],
@@ -213,9 +242,9 @@ def create_user(data: dict[str, Any]) -> dict[str, Any]:
             """
             INSERT INTO users (
                 name, slug, employment_type, target_basis, target_hours,
-                monthly_from_weekly_mode, overtime_min, overtime_max,
+                monthly_from_weekly_mode, overtime_min, overtime_max, color,
                 active, created_at, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 data["name"].strip(),
@@ -226,6 +255,7 @@ def create_user(data: dict[str, Any]) -> dict[str, Any]:
                 data.get("monthly_from_weekly_mode", "x4"),
                 float(data.get("overtime_min", 0)),
                 float(data.get("overtime_max", 12)),
+                normalize_color(data.get("color")),
                 1 if data.get("active", True) else 0,
                 now,
                 now,
@@ -247,7 +277,7 @@ def update_user(user_id: int, data: dict[str, Any]) -> dict[str, Any] | None:
             UPDATE users SET
                 name = ?, employment_type = ?, target_basis = ?, target_hours = ?,
                 monthly_from_weekly_mode = ?, overtime_min = ?, overtime_max = ?,
-                active = ?, updated_at = ?
+                color = ?, active = ?, updated_at = ?
             WHERE id = ?
             """,
             (
@@ -258,6 +288,7 @@ def update_user(user_id: int, data: dict[str, Any]) -> dict[str, Any] | None:
                 merged.get("monthly_from_weekly_mode", "x4"),
                 float(merged.get("overtime_min", 0)),
                 float(merged.get("overtime_max", 12)),
+                normalize_color(merged.get("color")),
                 1 if merged.get("active", True) else 0,
                 _now(),
                 user_id,

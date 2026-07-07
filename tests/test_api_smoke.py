@@ -33,10 +33,12 @@ class ApiSmokeTests(unittest.TestCase):
                 "monthly_from_weekly_mode": "x4",
                 "overtime_min": 0,
                 "overtime_max": 12,
+                "color": "#DC2626",
                 "active": True,
             },
         )
         self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.json()["color"], "#DC2626")
         return response.json()
 
     def test_create_user_preset_shift_and_report(self):
@@ -101,7 +103,7 @@ class ApiSmokeTests(unittest.TestCase):
 
         health = self.client.get("/api/health")
         self.assertEqual(health.status_code, 200)
-        self.assertEqual(health.json()["version"], "0.3.0")
+        self.assertEqual(health.json()["version"], "0.4.0")
 
         shift_id = shift_response.json()["id"]
         delete_shift = self.client.delete(f"/api/shifts/{shift_id}")
@@ -192,6 +194,24 @@ class ApiSmokeTests(unittest.TestCase):
                 "work_segments": [{"start": "08:00", "end": "14:00"}],
                 "break_segments": [{"start": "15:00", "end": "16:00"}],
                 "note": "pausa fuori turno",
+            },
+        )
+        self.assertEqual(response.status_code, 422)
+
+
+    def test_invalid_user_color_is_rejected(self):
+        response = self.client.post(
+            "/api/users",
+            json={
+                "name": "Colore errato",
+                "employment_type": "part_time",
+                "target_basis": "weekly",
+                "target_hours": 20,
+                "monthly_from_weekly_mode": "x4",
+                "overtime_min": 0,
+                "overtime_max": 12,
+                "color": "blue",
+                "active": True,
             },
         )
         self.assertEqual(response.status_code, 422)

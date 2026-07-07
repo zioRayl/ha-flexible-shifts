@@ -1,14 +1,15 @@
 # HA Flexible Shifts
 
-Repository Home Assistant per gestire turni completamente variabili, pause, ferie settimanali e report annuali.
+Repository Home Assistant per gestire turni completamente variabili, pause, ferie giornaliere o per intervallo e report annuali.
 
 Il progetto nasce dalla struttura del foglio `Orari 2026`: calendario settimanale, turni variabili con eventuale pausa, totale settimanale e report annuale con ore totali, straordinari, standard, giorni weekend lavorati, weekend disponibili, settimane di ferie e percentuale.
 
 ## Funzioni incluse
 
-- Più utenti nella stessa installazione.
+- Più utenti nella stessa installazione, ciascuno con un colore calendario personalizzabile.
 - Selettore multiplo utenti nella parte alta.
 - Vista predefinita settimanale, oltre a giorno e mese.
+- Layout responsive basato sulla larghezza disponibile: 7 colonne su desktop, griglie adattate su tablet e schede verticali su smartphone.
 - Navigazione tra settimane, mesi e anni precedenti.
 - Un solo intervallo per turno, espresso come **Inizio turno** e **Fine turno**.
 - Pausa opzionale con ora di inizio e fine, sottratta dal conteggio.
@@ -38,7 +39,7 @@ Esempio di pubblicazione:
 ```bash
 git init
 git add .
-git commit -m "Release 0.3.0"
+git commit -m "Release 0.4.0"
 git branch -M main
 git remote add origin https://github.com/NOME-UTENTE/ha-flexible-shifts.git
 git push -u origin main
@@ -50,7 +51,7 @@ Dal menu a rotellina:
 
 1. Aprire **Gestione utenti**.
 2. Creare almeno un utente.
-3. Indicare full-time/part-time, base settimanale/mensile, ore previste e soglia straordinari.
+3. Indicare colore, full-time/part-time, base settimanale/mensile, ore previste e soglia straordinari.
 4. Creare, se utile, i preset dal menu **Preset orari**.
 5. Inserire i turni dal pulsante **+ Turno**, scegliendo un preset oppure compilando gli orari manualmente.
 6. Inserire un singolo giorno o un intervallo dal pulsante **+ Ferie**.
@@ -94,7 +95,7 @@ Il pulsante **Scarica backup** crea e scarica una copia SQLite. I dati restano n
 
 Consultare [docs/CSV_IMPORT.md](docs/CSV_IMPORT.md). È incluso anche [samples/import_template.csv](samples/import_template.csv).
 
-## Limiti della versione 0.3.0
+## Limiti della versione 0.4.0
 
 - Ogni giorno prevede un solo turno con al massimo una pausa esplicita.
 - Il PDF del report viene prodotto tramite la funzione Stampa/Salva PDF del browser.

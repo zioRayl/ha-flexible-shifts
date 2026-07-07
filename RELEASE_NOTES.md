@@ -1,49 +1,30 @@
-# Flexible Shifts 0.3.0
+# Flexible Shifts 0.4.0
 
-## Report annuale
+## Colore personale per utente
 
-La tabella è ora ordinata così:
+In **Gestione utenti** è disponibile un selettore colore. Il colore viene salvato nel profilo e utilizzato per:
 
-`Mese · Ore totali · Straordinari · Standard · GWE lavorati · Su · % · Settimane Ferie`
+- bordo sinistro dei turni nella vista settimanale;
+- elementi della vista mensile;
+- ferie dell’utente;
+- schede della vista giornaliera e riepiloghi;
+- indicatori nell’elenco e nel selettore utenti.
 
-Il campo **Saldo** è stato rimosso sia dalla tabella sia dal riepilogo laterale. La percentuale weekend è stata spostata subito dopo **Su** e la colonna **Ferie** è stata rinominata **Settimane Ferie**.
+Gli utenti esistenti ricevono automaticamente colori distinti alla prima esecuzione della nuova versione. Il database viene migrato senza perdere turni, ferie o preset.
 
-## Ferie giornaliere e per intervallo
+## Interfaccia responsive
 
-Le ferie non sono più vincolate alla settimana intera. È possibile inserire:
+L’impaginazione ora dipende dalla larghezza effettivamente disponibile nell’Ingress, senza basarsi sullo user-agent:
 
-- un singolo giorno;
-- più giorni consecutivi;
-- una settimana completa, selezionando il relativo intervallo.
+- desktop: settimana e mese fino a 7 colonne;
+- tablet e finestre intermedie: griglie da 4 o 2 colonne;
+- smartphone: una scheda per riga, toolbar e finestre di dialogo adattate;
+- vista mensile mobile convertita in elenco cronologico, con giorno della settimana visibile;
+- report, gestione utenti, preset e importazione mantengono lo scorrimento solo dove necessario.
 
-Il credito orario viene calcolato automaticamente in proporzione al contratto:
+## Compatibilità
 
-- full-time: vengono conteggiati i giorni da lunedì a venerdì;
-- part-time: vengono conteggiati i giorni da lunedì a domenica.
-
-Nel report **Settimane Ferie** mostra l'equivalente frazionario. Per esempio, un giorno full-time corrisponde a `0,20` settimane; un giorno part-time corrisponde a circa `0,14` settimane.
-
-Le ferie già presenti nel database restano valide e vengono conteggiate senza migrazioni distruttive.
-
-
-## Accesso per tutti gli utenti Home Assistant
-
-La voce **Turni** e l'interfaccia Ingress non sono più limitate agli amministratori. Il parametro `panel_admin` è impostato a `false`, quindi ogni utente autenticato di Home Assistant può aprire e utilizzare l'applicazione.
-
-## CSV
-
-L'importazione e l'esportazione supportano la nuova colonna facoltativa `data_fine`:
-
-```csv
-data;data_fine;tipo;inizio_turno;fine_turno;inizio_pausa;fine_pausa;ore_accreditate;note
-2026-01-12;;ferie;;;;;;;Giorno singolo
-2026-02-02;2026-02-08;ferie;;;;;;;Intervallo ferie
-```
-
-Le vecchie righe settimanali con credito pari alle ore settimanali vengono riconosciute automaticamente.
-
-## Verifiche
-
-- 16 test automatici superati;
-- sintassi Python e JavaScript verificata;
-- nessuna modifica distruttiva allo schema SQLite.
+- aggiornamento dello schema SQLite con la sola colonna `users.color`;
+- API utenti compatibile con il nuovo campo `color` in formato esadecimale `#RRGGBB`;
+- dati delle versioni precedenti conservati;
+- accesso Ingress per tutti gli utenti Home Assistant invariato (`panel_admin: false`).

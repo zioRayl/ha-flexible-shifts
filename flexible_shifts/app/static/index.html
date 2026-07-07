@@ -176,9 +176,9 @@
     <div class="dialog-header">
       <div>
         <h2>Gestione utenti</h2>
-        <p>Contratto, obiettivi orari e soglie individuali degli straordinari.</p>
+        <p>Contratto, obiettivi orari, colore calendario e soglie individuali degli straordinari.</p>
       </div>
-      <button class="dialog-close" data-close-dialog="usersDialog" aria-label="Chiudi">×</button>
+      <button class="dialog-close" type="button" data-close-dialog="usersDialog" aria-label="Chiudi">×</button>
     </div>
     <div class="users-layout">
       <div>
@@ -189,6 +189,13 @@
         <h3 id="userFormTitle">Nuovo utente</h3>
         <label>Nome
           <input id="userName" type="text" required maxlength="100">
+        </label>
+        <label>Colore utente
+          <div class="color-picker-row">
+            <input id="userColor" type="color" value="#2563eb" aria-label="Colore utente">
+            <output id="userColorValue" for="userColor">#2563EB</output>
+          </div>
+          <small class="field-hint">Usato sul bordo dei turni, nella vista mensile e nei riepiloghi.</small>
         </label>
         <div class="form-grid two-cols">
           <label>Tipo contratto
@@ -359,7 +366,7 @@
       <button class="dialog-close" data-close-dialog="aboutDialog" aria-label="Chiudi">×</button>
     </div>
     <div class="info-box">
-      Vista settimanale predefinita, utenti multipli, inizio/fine turno, pausa esplicita, preset per utente, ferie settimanali, report annuale, weekend lavorati, CSV e sensori Home Assistant.
+      Vista settimanale predefinita, utenti multipli con colori personalizzati, layout responsive, inizio/fine turno, pausa esplicita, preset per utente, ferie giornaliere, report annuale, CSV e sensori Home Assistant.
     </div>
   </dialog>
 

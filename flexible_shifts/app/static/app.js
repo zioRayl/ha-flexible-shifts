@@ -90,6 +90,27 @@ function escapeHtml(value) {
     .replaceAll("'", '&#039;');
 }
 
+const USER_COLOR_PALETTE = [
+  '#2563EB', '#DC2626', '#16A34A', '#9333EA', '#EA580C',
+  '#0891B2', '#DB2777', '#65A30D', '#4F46E5', '#CA8A04',
+];
+
+function safeUserColor(user) {
+  const color = String(user?.color || '').toUpperCase();
+  return /^#[0-9A-F]{6}$/.test(color) ? color : '#2563EB';
+}
+
+function nextUserColor() {
+  const used = new Set(state.users.map((user) => safeUserColor(user)));
+  return USER_COLOR_PALETTE.find((color) => !used.has(color)) || USER_COLOR_PALETTE[state.users.length % USER_COLOR_PALETTE.length];
+}
+
+function updateUserColorPreview() {
+  const color = String($('#userColor').value || '#2563eb').toUpperCase();
+  $('#userColorValue').textContent = color;
+  $('#userColorValue').style.setProperty('--preview-color', color);
+}
+
 function showToast(message, error = false) {
   const toast = $('#toast');
   toast.textContent = message;
@@ -124,6 +145,7 @@ function renderUserPicker() {
   list.innerHTML = state.users.filter((user) => user.active).map((user) => `
     <label>
       <input type="checkbox" value="${user.id}" ${state.selectedUserIds.includes(user.id) ? 'checked' : ''}>
+      <span class="user-color-dot" style="--user-color: ${safeUserColor(user)}"></span>
       <span>${escapeHtml(user.name)}</span>
     </label>
   `).join('') || '<div class="muted">Nessun utente attivo</div>';
@@ -231,7 +253,7 @@ function pauseText(shift) {
 function shiftCard(shift, compact = false) {
   const user = getUser(shift.user_id);
   return `
-    <article class="${compact ? 'month-chip' : 'shift-card'}" data-shift-id="${shift.id}">
+    <article class="${compact ? 'month-chip' : 'shift-card'} user-colored" style="--user-color: ${safeUserColor(user)}" data-shift-id="${shift.id}">
       <div class="shift-user">${escapeHtml(user?.name || 'Utente')}</div>
       <div class="shift-times">${escapeHtml(shiftTimes(shift))}</div>
       ${compact ? '' : `<div class="shift-total">${formatHours(shift.total_hours)} h</div>`}
@@ -247,7 +269,7 @@ function vacationPeriodLabel(vacation) {
 function vacationCard(vacation, compact = false) {
   const user = getUser(vacation.user_id);
   return `
-    <article class="${compact ? 'month-chip vacation' : 'shift-card vacation-card'}" data-vacation-id="${vacation.id}">
+    <article class="${compact ? 'month-chip vacation' : 'shift-card vacation-card'} user-colored" style="--user-color: ${safeUserColor(user)}" data-vacation-id="${vacation.id}">
       <div class="shift-user">${escapeHtml(user?.name || 'Utente')} · Ferie</div>
       ${compact ? '' : `<div class="shift-total">${escapeHtml(vacationPeriodLabel(vacation))} · ${formatHours(vacation.credited_hours)} h</div>`}
     </article>`;
@@ -323,7 +345,7 @@ function renderMonthView() {
         return `
           <section class="month-day ${outside ? 'outside' : ''} ${sameDay(day, new Date()) ? 'today' : ''}">
             <div class="month-day-number">
-              <span>${day.getDate()}</span>
+              <span><span class="month-weekday-inline">${formatDate(day, { weekday: 'short' })} </span>${day.getDate()}</span>
               <button class="text-button" type="button" data-add-date="${dateString}" title="Aggiungi turno">+</button>
             </div>
             <div class="month-day-items">
@@ -346,8 +368,8 @@ function renderDayView() {
     if (vacation) content = `<div class="large-time">Ferie</div><p>${escapeHtml(vacationPeriodLabel(vacation))} · ${formatHours(vacation.credited_hours)} ore accreditate nel periodo.</p>`;
     if (shift) content = `<div class="large-time">${escapeHtml(shiftTimes(shift))}</div><p>${formatHours(shift.total_hours)} h${shift.break_segments.length ? ` · pausa ${escapeHtml(pauseText(shift))}` : ''}</p>`;
     return `
-      <section class="day-view-card">
-        <h3>${escapeHtml(user.name)}</h3>
+      <section class="day-view-card user-colored" style="--user-color: ${safeUserColor(user)}">
+        <h3><span class="user-color-dot" style="--user-color: ${safeUserColor(user)}"></span>${escapeHtml(user.name)}</h3>
         ${content}
         <div class="day-actions">
           <button class="primary-button" type="button" ${shift ? `data-shift-id="${shift.id}"` : `data-add-date="${dateString}"`}>${shift ? 'Modifica turno' : '+ Inserisci turno'}</button>
@@ -368,7 +390,7 @@ function renderSummary() {
     const vacationHours = userVacations.reduce((sum, vacation) => sum + Number(vacation.credited_hours_in_range || 0), 0);
     const vacationWeeks = userVacations.reduce((sum, vacation) => sum + Number(vacation.equivalent_weeks_in_range || 0), 0);
     return `
-      <div class="summary-card">
+      <div class="summary-card user-colored" style="--user-color: ${safeUserColor(user)}">
         <strong>${formatHours(hours + vacationHours)} h</strong>
         <span>${escapeHtml(user.name)} ${periodLabel}${vacationWeeks ? ` · ${formatHours(vacationWeeks)} sett. ferie` : ''}</span>
       </div>`;
@@ -505,6 +527,8 @@ function resetUserForm() {
   $('#userId').value = '';
   $('#userFormTitle').textContent = 'Nuovo utente';
   $('#userName').value = '';
+  $('#userColor').value = nextUserColor().toLowerCase();
+  updateUserColorPreview();
   $('#employmentType').value = 'part_time';
   $('#targetBasis').value = 'weekly';
   $('#targetHours').value = '30.5';
@@ -521,6 +545,8 @@ function fillUserForm(user) {
   $('#userId').value = user.id;
   $('#userFormTitle').textContent = `Modifica ${user.name}`;
   $('#userName').value = user.name;
+  $('#userColor').value = safeUserColor(user).toLowerCase();
+  updateUserColorPreview();
   $('#employmentType').value = user.employment_type;
   $('#targetBasis').value = user.target_basis;
   $('#targetHours').value = user.target_hours;
@@ -538,7 +564,7 @@ function renderUsersManagement() {
   if (!list) return;
   list.innerHTML = state.users.map((user) => `
     <div class="user-list-item ${user.active ? '' : 'inactive'}" data-user-id="${user.id}">
-      <strong>${escapeHtml(user.name)}</strong>
+      <strong><span class="user-color-dot" style="--user-color: ${safeUserColor(user)}"></span>${escapeHtml(user.name)}</strong>
       <small>${user.employment_type === 'full_time' ? 'Full-time' : 'Part-time'} · ${formatHours(user.target_hours)} h ${user.target_basis === 'weekly' ? 'settimanali' : 'mensili'}</small>
       <small>Straordinari accettabili: ${formatHours(user.overtime_min)}-${formatHours(user.overtime_max)} h</small>
     </div>`).join('') || '<div class="muted">Nessun utente creato.</div>';
@@ -854,6 +880,7 @@ function wireEvents() {
   }));
 
   $('#newUserButton').addEventListener('click', resetUserForm);
+  $('#userColor').addEventListener('input', updateUserColorPreview);
   $('#targetBasis').addEventListener('change', updateWeeklyModeVisibility);
   $('#userForm').addEventListener('submit', async (event) => {
     event.preventDefault();
@@ -866,6 +893,7 @@ function wireEvents() {
       monthly_from_weekly_mode: $('#monthlyFromWeeklyMode').value,
       overtime_min: Number($('#overtimeMin').value),
       overtime_max: Number($('#overtimeMax').value),
+      color: $('#userColor').value.toUpperCase(),
       active: $('#userActive').checked,
     };
     try {
